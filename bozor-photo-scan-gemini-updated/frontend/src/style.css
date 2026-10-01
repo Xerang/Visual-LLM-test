@@ -1,0 +1,52 @@
+:root { font-family: Inter, Pretendard, 'Malgun Gothic', system-ui, sans-serif; color: #18263b; background: #f5f7fa; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+.layout { max-width: 1170px; margin: auto; padding: 54px 24px 80px; }
+.header { margin-bottom: 30px; }
+.eyebrow { color: #48648d; font-size: .78rem; font-weight: 800; letter-spacing: .16em; }
+h1 { margin: 12px 0 10px; font-size: clamp(2rem, 4vw, 3.4rem); letter-spacing: -.05em; }
+h2 { font-size: 1.2rem; margin: 0 0 13px; }
+p { line-height: 1.6; }
+.header p { color: #526277; margin: 0; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; }
+.panel { background: white; border: 1px solid #e1e7ef; border-radius: 18px; padding: 26px; box-shadow: 0 12px 32px #233a5910; min-height: 540px; }
+.muted { color: #65748a; font-size: .9rem; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 19px 0; }
+.button { border-radius: 9px; border: 1px solid #244c83; background: #244c83; color: white; padding: 11px 15px; font-weight: 700; }
+.button:hover:not(:disabled) { filter: brightness(1.08); }
+.button:disabled { cursor: not-allowed; opacity: .5; }
+.button.secondary { background: #f3f7fc; color: #234775; border-color: #cbd8e8; }
+.button.ghost { background: transparent; color: #234775; border-color: #d4ddea; }
+.button.primary { width: 100%; margin-top: 18px; padding: 14px; }
+.photo { display: block; width: 100%; max-height: 370px; object-fit: contain; border-radius: 11px; background: #101c2b; }
+.empty { min-height: 250px; border: 1px dashed #bdcbd9; border-radius: 11px; display: grid; place-items: center; text-align: center; color: #7c8a9b; padding: 20px; background: #f9fbfd; }
+.error { padding: 12px; background: #fff0f1; color: #a12b39; border-radius: 8px; }
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.result-head h2 { margin: 0; }
+.summary { display: grid; gap: 10px; margin: 17px 0; }
+.summary div { display: grid; grid-template-columns: 100px 1fr; gap: 12px; line-height: 1.45; }
+.summary span { color: #68798e; }
+.summary strong { font-weight: 650; overflow-wrap: anywhere; }
+.note { padding: 11px; border-radius: 8px; background: #e9f5ed; color: #256641; font-size: .9rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #162237; color: #edf5ff; padding: 18px; border-radius: 10px; overflow-x: auto; font-size: .82rem; line-height: 1.5; }
+.footnote { margin-top: 19px; }
+.candidates { display: grid; gap: 10px; margin: 16px 0 22px; }
+.candidate { width: 100%; text-align: left; border: 1px solid #d1dce9; background: #f9fbfe; border-radius: 10px; padding: 12px; color: inherit; }
+.candidate.selected { border-color: #244c83; box-shadow: 0 0 0 2px #244c8330; background: #edf4fc; }
+.candidate strong { display: inline-block; margin-right: 10px; }
+.candidate span { color: #45628a; font-size: .85rem; }
+.candidate small { display: block; margin-top: 5px; color: #5e6e82; line-height: 1.45; }
+.review { border-top: 1px solid #e1e7ef; margin-top: 18px; padding-top: 20px; }
+.review-item { margin: 16px 0; padding: 16px; border: 1px solid #d1dce9; border-radius: 10px; background: #f9fbfe; }
+.review-item h3 { margin: 0 0 12px; font-size: 1rem; }
+.record-lookup { margin: 20px 0; display: flex; align-items: end; gap: 10px; }
+.record-lookup label { display: grid; gap: 5px; flex: 1; font-size: .9rem; }
+.record-lookup input { padding: 10px; border: 1px solid #cbd8e8; border-radius: 8px; }
+.review label { display: grid; gap: 5px; margin: 12px 0; font-size: .9rem; font-weight: 650; }
+.review input, .review select, .review textarea { width: 100%; padding: 10px; border: 1px solid #cbd8e8; border-radius: 8px; font: inherit; color: #18263b; background: white; }
+.inputs-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+details { margin-top: 22px; }
+summary { cursor: pointer; font-weight: 650; }
+@media (max-width: 850px) { .grid { grid-template-columns: 1fr; } .layout { padding: 32px 16px; } .panel { padding: 19px; min-height: auto; } }
+@media (max-width: 420px) { .inputs-row { grid-template-columns: 1fr; } }
