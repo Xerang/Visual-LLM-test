@@ -1,0 +1,72 @@
+# PR과 main 푸시마다 세 부분을 검사한다(CONTRIBUTING.md "테스트가 통과해야 합친다").
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: backend (mvn test)
+    runs-on: ubuntu-latest
+    services:
+      # 테스트는 실제 PostgreSQL을 쓴다(jsonb·pg_trgm·SKIP LOCKED). 공식 이미지는 UTF-8 로케일이라 키릴 검색 검사도 통과한다.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: bozor_test
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DB_URL: jdbc:postgresql://localhost:5432/bozor_test
+      TEST_DB_USER: postgres
+      TEST_DB_PASSWORD: postgres
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - run: mvn -B test
+
+  vision:
+    name: vision (unittest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vision
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vision/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  frontend:
+    name: frontend (build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
