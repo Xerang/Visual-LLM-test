@@ -1,4 +1,4 @@
-# PR과 main 푸시마다 세 부분을 검사한다(CONTRIBUTING.md "테스트가 통과해야 합친다").
+# PR과 main 푸시마다 백엔드 테스트·AI 서버 테스트·화면 빌드·배포용 jar 묶기를 검사한다(CONTRIBUTING.md "테스트가 통과해야 합친다").
 name: CI
 
 on:
@@ -70,3 +70,27 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  package:
+    # 배포용 jar(화면 포함)가 계속 만들어지는지 확인한다(README §8). 테스트는 backend 작업에서 돌리므로 건너뛴다.
+    name: package (jar with frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - run: mvn -B clean package -Pwith-frontend -DskipTests
+        working-directory: backend
+      - name: jar 안에 화면이 들어 있는지 확인
+        run: unzip -l backend/target/bozor-backend-1.0.0.jar | grep -q 'BOOT-INF/classes/static/index.html'

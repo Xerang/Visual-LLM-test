@@ -107,6 +107,7 @@ npm run dev
 | `VISION_MODE` | `http` | `http` = FastAPI 호출, `fake` = Gemini 없이 고정 후보 |
 | `VISION_SERVICE_URL` | `http://localhost:8000` | AI 서버 주소 |
 | `STORAGE_DIR` | `./data/images` | 사진 저장 폴더 |
+| `SERVER_ADDRESS`, `SERVER_PORT` | `127.0.0.1`, `8080` | 다른 기기(휴대폰 등)에서 접속하게 하려면 `SERVER_ADDRESS=0.0.0.0` |
 | `JWT_SECRET` | dev 프로필에만 개발용 값 | 32바이트 이상. dev 외 프로필에서는 꼭 설정 |
 | `AUTH_MODE` | dev 프로필에서 `mock` | 목 로그인 켜기/끄기 |
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | (`vision/.env`) | AI 서버용 |
@@ -166,3 +167,34 @@ cd vision
 | `common` | 설정, 오류 형식, 페이지, 언어 |
 
 DB 테이블은 Flyway(`src/main/resources/db/migration`)가 만들고, Hibernate는 엔티티와 테이블이 맞는지 검사만 한다. **이미 적용된 마이그레이션 파일은 고치지 말고 새 버전 파일을 추가한다.**
+
+## 8. 배포용 실행 (서버 하나로 API + 화면)
+
+통합 데모·실증용이다. 화면을 빌드해 백엔드 jar 안에 넣으면 **서버 하나, 주소 하나**로 API와 화면이 함께 열린다(CORS 설정 불필요). AI 서버(vision)는 지금처럼 따로 띄운다.
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+```bash
+cd backend
+mvn clean package -Pwith-frontend
+```
+
+`frontend/dist`가 없으면 빌드가 멈추고 안내 문구를 보여준다. `clean`을 빼면 예전 화면이 섞일 수 있다.
+
+실행 (macOS·Linux 예시, 값은 바꿔서):
+
+```bash
+SERVER_ADDRESS=0.0.0.0 DB_URL=jdbc:postgresql://localhost:5432/bozor DB_PASSWORD=비밀번호 JWT_SECRET=32자-이상의-임의-문자열을-직접-만든다 STORAGE_DIR=/srv/bozor/images VISION_SERVICE_URL=http://127.0.0.1:8000 java -jar target/bozor-backend-1.0.0.jar
+```
+
+Windows PowerShell은 `$env:SERVER_ADDRESS="0.0.0.0"`처럼 변수를 먼저 정한 뒤 `java -jar target\bozor-backend-1.0.0.jar`.
+
+- 화면 주소(`/seller/stores/1` 등)로 바로 들어오거나 새로고침해도 화면이 열린다. 없는 API·파일은 404.
+- 느린 회선 대응(조사 §1): 화면 JS·JSON 응답은 gzip으로 보낸다(JS 약 330KB → 100KB). 파일 이름에 해시가 붙은 `assets/`는 1년 캐시, `index.html`은 매번 새 버전을 확인하므로 다시 배포하면 바로 새 화면이 보인다.
+- **주의(임시 결정 #1·#5)**: 프로필을 정하지 않으면 dev(목 로그인 + 목 데이터)로 뜬다. 누구나 비밀번호 없이 관리자로 들어올 수 있으므로, 실제 로그인을 만들기 전까지는 **공개 인터넷에 상시로 열지 않는다**(시연할 때만, 주소를 아는 사람에게만). dev 프로필의 기본 `JWT_SECRET`은 저장소에 공개된 값이므로 배포할 때는 꼭 직접 정한다.
+- 사진은 `STORAGE_DIR`에 쌓인다(임시 결정 #6). 서버를 옮길 때 DB와 함께 백업한다.
+- 어디에 배포할지(AWS·학교 서버 등)와 비용은 팀 결정이 필요하다 → [개발 기록 5번](docs/05-dev-log.md).

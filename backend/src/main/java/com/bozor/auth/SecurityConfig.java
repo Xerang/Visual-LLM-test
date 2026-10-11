@@ -71,6 +71,9 @@ public class SecurityConfig {
                                 "/api/v1/stores", "/api/v1/stores/**", "/api/v1/products", "/api/v1/products/**",
                                 "/api/v1/images/*/file").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        // 배포용 jar 의 화면 파일과 화면 주소(/seller/... 등). 권한 검사는 화면이 부르는 API에서 한다.
+                        .requestMatchers(request -> HttpMethod.GET.matches(request.getMethod())
+                                && !request.getRequestURI().startsWith("/api/")).permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(converter))

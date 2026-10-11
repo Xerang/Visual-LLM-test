@@ -2,7 +2,11 @@
 # 프로필을 지정하지 않으면 dev 로 실행된다(목 로그인 + 목 데이터).
 server:
   port: 8080
-  address: ${SERVER_ADDRESS:127.0.0.1}
+  address: ${SERVER_ADDRESS:127.0.0.1}   # 다른 기기에서 접속하게 하려면 0.0.0.0
+  compression:
+    # 화면 JS(약 330KB → gzip 100KB)·JSON 응답을 압축한다. 현지 모바일 회선이 느리다(조사 §1).
+    # 기본 대상: text/html, text/css, application/javascript, application/json 등. 사진(JPEG)은 이미 압축돼 있어 제외된다.
+    enabled: true
 
 spring:
   application:
@@ -28,6 +32,9 @@ spring:
     multipart:
       max-file-size: 5MB
       max-request-size: 6MB
+  web:
+    resources:
+      add-mappings: false     # 정적 파일(배포용 화면)은 FrontendResourceConfig 에서만 등록한다
   # 오류 응답은 GlobalExceptionHandler 가 직접 만든다(code·errors 포함).
   # spring.mvc.problemdetails.enabled 를 켜면 기본 처리기가 먼저 가로채서 code 가 빠지므로 켜지 않는다.
 
