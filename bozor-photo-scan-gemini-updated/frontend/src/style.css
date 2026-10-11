@@ -1,0 +1,142 @@
+/* BOZOR 기본 스타일. 휴대폰 화면을 기준으로 만들고 넓은 화면에서는 가운데 정렬한다. */
+:root {
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --surface-2: #f3eee6;
+  --text: #1f1b16;
+  --text-2: #6b6258;
+  --border: #e5ddd1;
+  --brand: #b45309;          /* 말린 살구색 */
+  --brand-ink: #ffffff;
+  --brand-soft: #fdf0e2;
+  --ok: #15803d;
+  --ok-soft: #e7f6ec;
+  --warn: #a16207;
+  --warn-soft: #fdf6dc;
+  --danger: #b91c1c;
+  --danger-soft: #fdecec;
+  --radius: 10px;
+  --store: var(--brand);     /* 상점 화면에서 theme_color 로 바뀐다 */
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans KR", "Noto Sans", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); line-height: 1.5; }
+a { color: inherit; }
+img { max-width: 100%; display: block; }
+h1 { font-size: 1.35rem; margin: 0 0 12px; }
+h2 { font-size: 1.1rem; margin: 20px 0 10px; }
+h3 { font-size: 1rem; margin: 0 0 6px; }
+p { margin: 0 0 8px; }
+
+.app-header {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 800; letter-spacing: 0.06em; color: var(--brand); text-decoration: none; font-size: 1.15rem; }
+.nav { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; align-items: center; }
+.nav a, .nav button.link {
+  text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 0.92rem; color: var(--text-2);
+}
+.nav a.active { color: var(--text); background: var(--surface-2); font-weight: 600; }
+.count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px;
+  background: var(--brand); color: var(--brand-ink); font-size: 0.75rem; text-align: center; }
+
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.stack > * + * { margin-top: 12px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--text-2); font-size: 0.9rem; }
+.small { font-size: 0.82rem; }
+.right { text-align: right; }
+
+button, .button {
+  font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+button:disabled { opacity: 0.55; cursor: default; }
+.primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.danger { color: var(--danger); border-color: #f1c4c4; }
+.ghost { border-color: transparent; background: transparent; }
+button.link { border: none; background: none; padding: 0; color: var(--brand); text-decoration: underline; }
+.block { width: 100%; }
+
+input, select, textarea {
+  font: inherit; width: 100%; padding: 9px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+textarea { min-height: 70px; resize: vertical; }
+label.field { display: block; }
+label.field > span { display: block; font-size: 0.85rem; color: var(--text-2); margin-bottom: 4px; }
+.field-error { color: var(--danger); font-size: 0.82rem; margin-top: 4px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.check { display: flex; gap: 8px; align-items: center; }
+.check input { width: auto; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+  background: var(--surface-2); color: var(--text-2); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.danger { background: var(--danger-soft); color: var(--danger); }
+.badge.brand { background: var(--brand-soft); color: var(--brand); }
+
+.alert { padding: 10px 12px; border-radius: 8px; background: var(--danger-soft); color: var(--danger); font-size: 0.92rem; }
+.alert.info { background: var(--brand-soft); color: #7c3a06; }
+.alert.ok { background: var(--ok-soft); color: var(--ok); }
+.alert ul { margin: 6px 0 0; padding-left: 18px; }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.chip { white-space: nowrap; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 0.88rem; cursor: pointer; }
+.chip.on { background: var(--store); border-color: var(--store); color: #fff; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; overflow-x: auto; }
+.tabs a { padding: 8px 12px; text-decoration: none; color: var(--text-2); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs a.active { color: var(--text); border-color: var(--brand); font-weight: 600; }
+
+.thumb { aspect-ratio: 1 / 1; object-fit: cover; width: 100%; border-radius: 8px; background: var(--surface-2); }
+.thumb.placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-2); font-size: 0.8rem; }
+.thumb-sm { width: 52px; height: 52px; flex: none; }
+
+/* 상품 카드 그리드: 휴대폰 2열, 넓은 화면 4열 */
+.product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 720px) { .product-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.product-card { text-decoration: none; display: block; }
+.product-card .name { font-size: 0.92rem; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-card .price { font-weight: 700; }
+
+/* 상점 템플릿 */
+.store-hero { border-radius: var(--radius); overflow: hidden; background: var(--surface); border: 1px solid var(--border); }
+.store-hero .banner { height: 140px; background: var(--store); background-size: cover; background-position: center; }
+.store-hero .body { padding: 14px; }
+.store-accent { border-top: 4px solid var(--store); }
+.price-list .item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); text-decoration: none; }
+.price-list .group { margin-top: 14px; font-weight: 700; color: var(--store); font-size: 0.9rem; }
+.showcase .item { display: block; text-decoration: none; margin-bottom: 18px; }
+.showcase .item img, .showcase .item .thumb { aspect-ratio: 4 / 3; }
+
+.list > .card + .card { margin-top: 10px; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.table td, .table th { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.metric { background: var(--surface-2); border-radius: var(--radius); padding: 12px; }
+.metric .label { font-size: 0.8rem; color: var(--text-2); }
+.metric .value { font-size: 1.4rem; font-weight: 700; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 720px) { .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.stepper { display: inline-flex; align-items: center; gap: 4px; }
+.stepper button { padding: 4px 10px; }
+.stepper input { width: 80px; text-align: center; padding: 5px; }
+
+.candidate { border-left: 4px solid var(--border); }
+.candidate.accepted { border-left-color: var(--ok); }
+.candidate.rejected { border-left-color: var(--danger); opacity: 0.7; }
+.photos { display: flex; gap: 8px; overflow-x: auto; }
+.photos img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; flex: none; }

@@ -1,0 +1,21 @@
+# 테스트 프로필: 실제 PostgreSQL 테스트 DB를 쓴다(jsonb·pg_trgm·SKIP LOCKED는 H2로 흉내 낼 수 없다).
+# 준비: CREATE DATABASE bozor_test TEMPLATE template0 ENCODING 'UTF8';
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/bozor_test}
+    username: ${TEST_DB_USER:postgres}
+    password: ${TEST_DB_PASSWORD:}
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev
+
+app:
+  auth:
+    mode: mock
+  jwt:
+    secret: test-only-secret-0123456789-0123456789-abcdef
+  storage:
+    local-dir: ${java.io.tmpdir}/bozor-test-images
+  vision:
+    mode: fake
+  scan:
+    worker-enabled: false        # 테스트에서는 워커를 직접 호출한다

@@ -1,0 +1,10 @@
+# 개발용 프로필: 목 로그인 + 목 데이터(db/dev). 실서비스에서는 쓰지 않는다.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev
+
+app:
+  auth:
+    mode: mock
+  jwt:
+    secret: ${JWT_SECRET:dev-only-secret-do-not-use-in-production-0123456789}

@@ -1,0 +1,59 @@
+# 공통 설정. 실행 환경별 값은 application-{profile}.yml 과 환경 변수로 덮어쓴다.
+# 프로필을 지정하지 않으면 dev 로 실행된다(목 로그인 + 목 데이터).
+server:
+  port: 8080
+  address: ${SERVER_ADDRESS:127.0.0.1}
+
+spring:
+  application:
+    name: bozor
+  profiles:
+    default: dev
+  datasource:
+    # UTF-8 로케일 DB가 필요하다: CREATE DATABASE bozor TEMPLATE template0 ENCODING 'UTF8';
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bozor}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # 테이블은 Flyway가 만든다. 엔티티와 어긋나면 시작 시 실패한다.
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    locations: classpath:db/migration
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+  # 오류 응답은 GlobalExceptionHandler 가 직접 만든다(code·errors 포함).
+  # spring.mvc.problemdetails.enabled 를 켜면 기본 처리기가 먼저 가로채서 code 가 빠지므로 켜지 않는다.
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  # 운영 언어(임시 결정 #2). 실증 전에 tg 또는 ru 로 바꾼다.
+  default-locale: ko
+  auth:
+    # mock = dev 전용 목 로그인(임시 결정 #1). 그 밖의 값이면 /api/v1/dev/** 가 생기지 않는다.
+    mode: ${AUTH_MODE:none}
+  jwt:
+    secret: ${JWT_SECRET:}       # 32바이트 이상 필수. 비어 있으면 시작 시 실패한다.
+    ttl: 7d                      # 리프레시 토큰 없음(임시 결정 #8)
+  storage:
+    local-dir: ${STORAGE_DIR:./data/images}   # 임시 결정 #6: 실증 전 S3로 교체
+  vision:
+    # http = FastAPI 호출, fake = Gemini 없이 고정된 가짜 후보 반환(개발·시연 연습용)
+    mode: ${VISION_MODE:http}
+    url: ${VISION_SERVICE_URL:http://localhost:8000}
+    read-timeout: 300s
+  scan:
+    worker-enabled: true
+    poll-interval-ms: 1000
+    max-attempts: 3
+    base-backoff: 30s            # 재시도 간격: 30s → 60s → 120s
+    stuck-after: 5m              # 이보다 오래 RUNNING이면 워커가 죽은 것으로 보고 되돌린다
