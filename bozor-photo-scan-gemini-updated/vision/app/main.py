@@ -166,15 +166,16 @@ def get_client() -> genai.Client:
     )
 
 
-def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel]) -> BaseModel:
-    """재시도는 하지 않는다. 429·504 같은 일시 오류는 Spring 워커가 간격을 두고 다시 시도한다."""
+def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel], model: str = MODEL_NAME) -> BaseModel:
+    """재시도는 하지 않는다. 429·504 같은 일시 오류는 Spring 워커가 간격을 두고 다시 시도한다.
+    model 은 모델 비교 도구(tools/evaluate.py)가 바꿔 부를 때만 넘긴다."""
     content = [{"type": "text", "text": prompt}] + [
         {"type": "image", "data": base64.b64encode(img).decode("ascii"), "mime_type": "image/jpeg"}
         for img in images
     ]
     try:
         interaction = get_client().interactions.create(
-            model=MODEL_NAME,
+            model=model,
             input=content,
             response_format={"type": "text", "mime_type": "application/json", "schema": schema.model_json_schema()},
         )
@@ -182,11 +183,15 @@ def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel]) -> Ba
         # google-genai 2.x Interactions는 google.genai.errors.APIError 와 다른 예외 클래스를 쓴다.
         status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
         if status == 429:
-            logger.warning("Gemini request limit reached: model=%s", MODEL_NAME)
+            logger.warning("Gemini request limit reached: model=%s", model)
             raise HTTPException(status_code=429, detail="Gemini 요청 한도(429)에 도달했습니다.") from exc
         if isinstance(exc, TimeoutError) or "Timeout" in type(exc).__name__:
             logger.exception("Gemini request timed out")
             raise HTTPException(status_code=504, detail="Gemini 응답 대기 시간이 초과되었습니다.") from exc
+        if status in (500, 503):
+            # 과부하·일시 장애("high demand")는 잠시 뒤 다시 하면 된다. 503으로 넘겨 Spring 워커가 재시도하게 한다.
+            logger.warning("Gemini temporarily unavailable (status=%s): model=%s", status, model)
+            raise HTTPException(status_code=503, detail="Gemini 서버가 일시적으로 바쁩니다. 잠시 후 다시 시도합니다.") from exc
         if status is None:
             logger.exception("Gemini request failed")
             raise HTTPException(status_code=502, detail="Gemini 요청 처리에 실패했습니다.") from exc
@@ -195,7 +200,7 @@ def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel]) -> Ba
             400: "Gemini 오류 400: 요청 형식이나 JSON 스키마를 확인해 주세요.",
             401: "Gemini 오류 401: API 키를 확인해 주세요.",
             403: "Gemini 오류 403: API 키의 모델 접근 권한을 확인해 주세요.",
-            404: f"Gemini 오류 404: {MODEL_NAME} 모델을 이 API 키에서 쓸 수 있는지 확인해 주세요.",
+            404: f"Gemini 오류 404: {model} 모델을 이 API 키에서 쓸 수 있는지 확인해 주세요.",
         }
         raise HTTPException(status_code=502, detail=messages.get(status, f"Gemini 오류 {status}")) from exc
 
@@ -205,6 +210,24 @@ def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel]) -> Ba
     except ValidationError as exc:
         logger.warning("Gemini returned an invalid product schema: %s", exc)
         raise HTTPException(status_code=502, detail="Gemini 응답을 상품 JSON으로 해석하지 못했습니다.") from exc
+
+
+def scan_images(req: ScanRequest, normalized: list[bytes], model: str = MODEL_NAME) -> tuple[list[Candidate], list[str]]:
+    """정규화된 사진으로 Gemini를 불러 후보를 만든다. /v1/scan 과 모델 비교 도구가 함께 쓴다.
+    같은 함수를 써야 비교 도구의 측정값이 실제 서비스 성능을 그대로 말해 준다."""
+    has_caption = bool(req.caption_text and req.caption_text.strip())
+    schema = model_schema([c.code for c in req.categories], with_price=has_caption)
+    scanned = call_gemini(build_prompt(req), normalized, schema, model)
+    candidates = []
+    for c in scanned.candidates[:req.max_candidates]:
+        if not c.name.strip():
+            continue
+        price = getattr(c, "suggested_price", None)
+        candidates.append(Candidate(
+            name=c.name.strip(), description=c.description, category_code=c.category_code,
+            visible_text=c.visible_text, review_notes=c.review_notes,
+            suggested_price=price if has_caption and price is not None and price >= 0 else None))
+    return candidates, scanned.image_notes[:5]
 
 
 # ---- API ------------------------------------------------------------------
@@ -236,21 +259,10 @@ def scan(images: list[UploadFile] = File(...), request: str = Form(...)) -> Scan
     if not key_is_configured():
         raise HTTPException(status_code=503, detail="FastAPI의 GEMINI_API_KEY를 설정해 주세요.")
 
-    has_caption = bool(req.caption_text and req.caption_text.strip())
-    schema = model_schema([c.code for c in req.categories], with_price=has_caption)
-    logger.info("Gemini scan started: model=%s images=%d caption=%s", MODEL_NAME, len(normalized), has_caption)
-    scanned = call_gemini(build_prompt(req), normalized, schema)
-
-    candidates = []
-    for c in scanned.candidates[:req.max_candidates]:
-        if not c.name.strip():
-            continue
-        price = getattr(c, "suggested_price", None)
-        candidates.append(Candidate(
-            name=c.name.strip(), description=c.description, category_code=c.category_code,
-            visible_text=c.visible_text, review_notes=c.review_notes,
-            suggested_price=price if has_caption and price is not None and price >= 0 else None))
+    logger.info("Gemini scan started: model=%s images=%d caption=%s", MODEL_NAME, len(normalized),
+                bool(req.caption_text and req.caption_text.strip()))
+    candidates, image_notes = scan_images(req, normalized)
     elapsed = round((time.monotonic() - started) * 1000)
     logger.info("Gemini scan completed: elapsed_ms=%d candidates=%d", elapsed, len(candidates))
-    return ScanResponse(candidates=candidates, image_notes=scanned.image_notes[:5], model=MODEL_NAME,
+    return ScanResponse(candidates=candidates, image_notes=image_notes, model=MODEL_NAME,
                         prompt_version=PROMPT_VERSION, elapsed_ms=elapsed)

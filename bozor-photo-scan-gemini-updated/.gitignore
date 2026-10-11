@@ -8,3 +8,4 @@ target/
 *.pt
 *.onnx
 .DS_Store
+eval-results/

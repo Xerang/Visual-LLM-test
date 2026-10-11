@@ -123,7 +123,21 @@ cd frontend && npm run build                             # 빌드 확인
 
 백엔드 테스트는 실제 PostgreSQL을 쓴다. jsonb·pg_trgm·`FOR UPDATE SKIP LOCKED`는 H2 같은 메모리 DB로 흉내 낼 수 없어서다.
 
-## 5. 자주 막히는 곳
+## 5. 모델 비교 (정답셋 평가)
+
+같은 사진 세트로 Gemini 모델들을 같은 지표로 비교한다. 서비스와 **같은 함수**를 부르므로 측정값은 실제 `/v1/scan` 성능이다.
+
+```bash
+cd vision
+.venv/bin/python -m tools.evaluate 정답셋/gold.json --models gemini-3.5-flash,gemini-3.5-flash-lite --max-calls 20
+```
+
+- 정답셋 형식(사진마다 정답 소분류 코드 목록)과 채점 규칙은 `vision/tools/evaluate.py` 맨 위 설명을 본다.
+- 카테고리 목록은 켜져 있는 백엔드(`/api/v1/categories`)에서 받는다. 백엔드 없이 하려면 그 응답을 파일로 저장해 `--categories`로 넘긴다.
+- **무료 한도 보호**: 성공한 결과는 `eval-results/results.jsonl`에 저장돼 다시 부르지 않는다. 429가 나면 바로 멈추고, 다음 날 같은 명령으로 이어서 한다.
+- 결과 표는 `eval-results/summary.md`. 상품명·설명의 질과 캡션 가격은 채점하지 않으니 사람이 따로 본다.
+
+## 6. 자주 막히는 곳
 
 | 증상 | 원인과 해결 |
 |---|---|
@@ -131,10 +145,11 @@ cd frontend && npm run build                             # 빌드 확인
 | 백엔드 시작 시 `JWT_SECRET ... 32바이트 이상` | dev 프로필이 아니다. 프로필을 지정하지 않거나 `JWT_SECRET`을 32자 이상으로 설정한다 |
 | 백엔드 시작 시 `Schema-validation` 오류 | 엔티티와 테이블이 다르다. 이미 적용된 마이그레이션 파일을 고쳤다면 되돌리고 새 버전 파일로 추가한다 |
 | 스캔이 계속 "대기 중"에 "AI 요청 한도" 메시지 | 무료 키 한도 초과(429). 다음 날 다시 하거나 가짜 AI 모드로 개발한다 |
+| 스캔이 "Gemini 서버가 일시적으로 바쁩니다"로 재시도 | Gemini 과부하(503). 30초·60초 뒤 자동으로 다시 시도한다. 계속되면 시간을 두고 다시 한다 |
 | 스캔이 "AI 서버에 연결하지 못했습니다"로 재시도 | AI 서버(8000)가 꺼져 있다. 띄우거나 `VISION_MODE=fake`로 실행한다 |
 | 로그인 화면에 "목 로그인이 꺼져 있습니다" | 백엔드가 dev 프로필이 아니다 |
 
-## 6. 코드 구조 (백엔드)
+## 7. 코드 구조 (백엔드)
 
 기능별 패키지 안에 Controller → Service → Repository 순서로 나눴다.
 

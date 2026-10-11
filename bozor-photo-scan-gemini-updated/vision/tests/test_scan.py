@@ -78,6 +78,20 @@ class ScanApiTest(unittest.TestCase):
         res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
         self.assertEqual(res.status_code, 429)
 
+    def test_gemini_overload_is_retryable_503_not_permanent_502(self):
+        # 실제로 받은 응답: 503 "gemini-3.5-flash is currently experiencing high demand"
+        for status in (500, 503):
+            err = Exception("high demand")
+            err.status_code = status
+            res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
+            self.assertEqual(res.status_code, 503, f"Gemini {status}")
+
+    def test_bad_request_from_gemini_stays_permanent_502(self):
+        err = Exception("bad schema")
+        err.status_code = 400
+        res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
+        self.assertEqual(res.status_code, 502)
+
 
 if __name__ == "__main__":
     unittest.main()

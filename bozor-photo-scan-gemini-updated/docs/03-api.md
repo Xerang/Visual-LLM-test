@@ -462,7 +462,7 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 |---|---|---|
 | `AI_RATE_LIMITED` | Gemini 429 | 재시도 |
 | `AI_TIMEOUT` | Gemini·FastAPI 응답 시간 초과 | 재시도 |
-| `AI_UNAVAILABLE` | FastAPI 연결 실패·503 | 재시도 |
+| `AI_UNAVAILABLE` | FastAPI 연결 실패·503 (Gemini 과부하 500·503 포함) | 재시도 |
 | `AI_BAD_RESPONSE` | AI 응답이 스키마와 맞지 않음 (502) | 바로 실패 |
 | `IMAGE_INVALID` | FastAPI가 사진을 읽지 못함 (400·413) | 바로 실패 |
 
@@ -866,7 +866,7 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 }
 ```
 
-오류는 PoC와 같은 HTTP 상태를 유지한다(400·413·429·502·503·504). 워커는 위 `error.code` 표대로 바꿔서 저장한다. FastAPI의 `GET /health`도 그대로 둔다.
+오류는 PoC와 같은 HTTP 상태를 유지한다(400·413·429·502·503·504). 단, **Gemini의 500·503(일시 과부하, "high demand")은 503으로 넘긴다.** 다시 하면 되는 오류이므로 워커가 재시도한다(2026-10-12 실제 호출에서 확인). 그 밖의 Gemini 오류(400·401·403·404, 응답 형식 오류)는 502로 넘겨 바로 실패시킨다. 워커는 위 `error.code` 표대로 바꿔서 저장한다. FastAPI의 `GET /health`도 그대로 둔다.
 
 ## 8. PoC API와의 대응
 
