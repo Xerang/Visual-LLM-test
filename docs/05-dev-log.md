@@ -77,7 +77,7 @@ v1(PR #1) 이후의 작업을 **근거와 함께** 기록한다. 새 작업은 �
   - CI에 `package` 작업 추가(jar 안에 `static/index.html`이 있는지 검사).
   - README §8 배포 절차·주의(목 로그인 상태라 공개 상시 운영 금지, `JWT_SECRET` 직접 설정), 실증 전 체크리스트에 한 줄 추가.
 - 검증: 단위 테스트 `SpaFallbackResolverTest` 3개, 통합 테스트 `FrontendRoutingTest` 2개(화면 주소는 401이 아니라 404, API 권한 유지). 백엔드 62개 통과. 실제 jar(65MB)를 8081 포트로 띄워 확인: `/`·`/seller/stores/1`·`/s/{slug}` → index.html(no-cache), JS → gzip + `max-age=31536000, public, immutable`, 없는 `assets/` → 404, `/api/v1/categories` gzip, Swagger 정상. 브라우저(모바일 폭)에서 로그인 → 상점 관리 새로고침 → 사진 포함 정상 표시, 콘솔 오류 없음. `frontend/dist`를 치운 상태에서는 빌드가 안내 문구와 함께 실패함을 확인.
-- CI `package` 작업은 이번 푸시의 GitHub Actions 결과로 확인한다(로컬에서 같은 명령은 통과).
+- CI: `1d4f27b` 실행에서 backend·vision·frontend·package 4개 작업 모두 통과(GitHub Actions).
 - **결정 필요**: 어디에 배포할지(AWS 등 2차 구성의 S3 포함, 학교 서버, 팀원 노트북으로 시연)와 비용. 정해지면 그 환경에 맞춰 실행 스크립트를 만든다.
 - **미검증 환경**: Docker 파일은 만들지 않았다. 이 개발 환경에 Docker가 없어 직접 확인할 수 없기 때문이다(확인할 수 없는 것은 만들지 않는다는 원칙).
 
