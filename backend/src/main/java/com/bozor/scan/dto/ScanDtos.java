@@ -31,6 +31,7 @@ public final class ScanDtos {
     public record JobResponse(
             Long id,
             Long storeId,
+            Long importBatchId,
             String status,
             String sourceType,
             String captionText,
@@ -68,9 +69,10 @@ public final class ScanDtos {
      * 검수 확정. AI 후보는 모두 한 번씩 ACCEPTED/REJECTED 로 결정해야 한다.
      * candidate_id 가 null 이면 AI가 놓쳐 판매자가 추가한 상품이다.
      */
+    /** AI 후보가 0개인 스캔(상품이 없는 사진)은 items 를 비워서 "상품 없음"으로 확정할 수 있다. */
     public record ReviewRequest(
             boolean publish,
-            @NotEmpty @Size(max = 20) List<@Valid ReviewItem> items) {}
+            @NotNull @Size(max = 20) List<@Valid ReviewItem> items) {}
 
     public record ReviewItem(
             Long candidateId,

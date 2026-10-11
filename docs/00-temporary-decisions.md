@@ -18,7 +18,7 @@
 | 9 | **사진 접근** | 공개 사진(판매 중 상품, 공개 상점 로고·배너)만 서명 없이 조회. 나머지는 주인 응답에 담긴 서명 주소(1~2시간)로만 조회(2026-10-12). 서명 키는 JWT 키를 함께 씀 | S3로 바꿀 때(#6) S3 서명 URL로 교체, 서명 키를 JWT 키와 분리 | `ImageUrlSigner`, `ImageService.serve`·`isPublic`, 저장소 구현체 | [API §5.3](03-api.md#53-사진) |
 | 10 | **화면 문구** | 한국어를 화면 코드에 직접 씀. 상태·단위 라벨만 `format.js`에 모음 | 운영 언어로 번역(i18n 라이브러리 도입 검토) | `frontend/src/format.js`, `frontend/src/pages/**` | 임시 결정 #2 |
 | 11 | **검수 기본값** | AI 후보를 모두 "수락" 상태로 보여줌(빠른 등록 우선) | 실증에서 판매자가 확인 없이 넘기는지 관찰. 그렇다면 기본값을 "미결정"으로 바꿔 직접 고르게 함(정밀도 지표가 부풀려지지 않게) | `frontend/src/pages/seller/ScanJob.jsx`의 `newRow` | 2차 지표(등록 30초) |
-| 12 | **가짜 AI 모드** | `VISION_MODE=fake`면 Gemini 없이 고정 후보를 줌. 캡션에 `#fail429`·`#fail`을 넣으면 실패를 흉내 냄 | 실증·시연에서는 반드시 `http`(기본값) | `app.vision.mode` | 무료 키 일일 한도 |
+| 12 | **가짜 AI 모드** | `VISION_MODE=fake`면 Gemini 없이 고정 후보를 줌. 캡션에 `#fail429`·`#fail`을 넣으면 실패를, `#empty`를 넣으면 "상품 못 찾음"을 흉내 냄 | 실증·시연에서는 반드시 `http`(기본값) | `app.vision.mode` | 무료 키 일일 한도 |
 
 ## 실증 전 체크리스트
 

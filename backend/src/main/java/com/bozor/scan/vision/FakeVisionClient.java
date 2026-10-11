@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
  * 캡션에 아래 문구를 넣으면 실패를 흉내 낸다(재시도 화면 확인용).
  * - "#fail429" → 요청 한도 초과(재시도됨)
  * - "#fail"    → 응답 형식 오류(바로 실패)
+ * - "#empty"   → 상품을 하나도 찾지 못함(후보 0개, "상품 없음" 검수 확인용)
  */
 @Component
 @ConditionalOnProperty(prefix = "app.vision", name = "mode", havingValue = "fake")
@@ -37,6 +38,10 @@ public class FakeVisionClient implements VisionClient {
         }
         if (caption.contains("#fail")) {
             throw new VisionException(VisionException.BAD_RESPONSE, false, "가짜 AI: 응답 형식 오류를 흉내 냈습니다.");
+        }
+        if (caption.contains("#empty")) {
+            return new VisionScanResult(raw(List.of()), "fake", "fake_v1", 5, List.of(),
+                    List.of("가짜 AI: 상품을 찾지 못한 경우를 흉내 냈습니다."));
         }
         VisionScanRequest.CategoryOption first = pick(request.categories(), "food.dried_fruit", 0);
         VisionScanRequest.CategoryOption second = pick(request.categories(), "household.etc", request.categories().size() - 1);

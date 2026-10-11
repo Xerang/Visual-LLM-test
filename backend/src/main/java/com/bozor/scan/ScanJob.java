@@ -89,6 +89,9 @@ public class ScanJob {
     private Instant finishedAt;
     private Instant reviewedAt;
 
+    /** SNS 일괄 등록 묶음(import_batches). 단건 스캔이면 null. */
+    private Long importBatchId;
+
     @ElementCollection
     @CollectionTable(name = "scan_job_images", joinColumns = @JoinColumn(name = "scan_job_id"))
     @OrderBy("sortOrder")
@@ -148,6 +151,10 @@ public class ScanJob {
         this.finishedAt = null;
     }
 
+    public void assignToBatch(Long importBatchId) {
+        this.importBatchId = importBatchId;
+    }
+
     public void markReviewed() {
         this.reviewedAt = Instant.now();
     }
@@ -182,6 +189,7 @@ public class ScanJob {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getFinishedAt() { return finishedAt; }
     public Instant getReviewedAt() { return reviewedAt; }
+    public Long getImportBatchId() { return importBatchId; }
     public List<ScanJobImageRef> getImages() { return images; }
     public List<ScanCandidate> getCandidates() { return candidates; }
 }

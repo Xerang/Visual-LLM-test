@@ -86,6 +86,7 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 409 | `SCAN_JOB_NOT_REVIEWABLE` | 분석이 끝나지 않은(`SUCCEEDED`가 아닌) 스캔을 검수하려 함 |
 | 409 | `SCAN_JOB_ALREADY_REVIEWED` | 이미 검수한 스캔을 다시 제출 |
 | 409 | `SCAN_JOB_NOT_RETRYABLE` | `FAILED`가 아닌 스캔을 재시도 |
+| 409 | `IMPORT_BATCH_ALREADY_SUBMITTED` | 이미 분석을 요청한 일괄 등록 묶음에 다시 요청 |
 | 409 | `ORDER_ITEM_UNAVAILABLE` | 주문 상품이 미발행·품절·다른 상점 상품이거나 재고보다 많음 |
 | 409 | `ORDER_STATUS_INVALID` | 허용되지 않는 주문 상태 변경 |
 | 413 | `IMAGE_TOO_LARGE` | 사진 5MB 초과 |
@@ -140,6 +141,9 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 36 | GET | `/seller/orders/{order_id}` | 상점 주인 | 받은 주문 상세 | 10 |
 | 37 | POST | `/seller/orders/{order_id}/status` | 상점 주인 | 접수(재고 빼기 선택)·준비 완료·거래 완료·거절 | 10 |
 | 38 | GET | `/admin/metrics/scan` | 관리자 | 2차 회의 검증 지표 | 10 |
+| 39 | POST | `/seller/stores/{store_id}/import-batches` | 상점 주인 | SNS 일괄 등록 시작 (온보딩 시각 기록) | 11 |
+| 40 | POST | `/seller/import-batches/{batch_id}/jobs` | 상점 주인 | 게시물별 AI 스캔 요청 (202) | 11 |
+| 41 | GET | `/seller/import-batches/{batch_id}` | 상점 주인 | 일괄 등록 진행 상황 (폴링) | 11 |
 
 주차는 수정 일정 기준이다.
 
@@ -149,6 +153,7 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 8주차 | 10/19~25 | 핵심 흐름: 스캔 → 검수 → 발행, 판매자 상품 관리 |
 | 9주차 | 10/26~11/1 | 구매자 조회·검색 |
 | 10주차 | 11/2~8 | 주문, 지표, 통합 데모 1차 |
+| 11주차 | 11/9~15 | 추가 기능: SNS 사진 일괄 등록(39~41, 2026-10-12 먼저 구현) |
 
 ## 4. 핵심 흐름: 사진 → 상품 발행
 
@@ -413,6 +418,7 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 {
   "id": 31,
   "store_id": 1,
+  "import_batch_id": null,
   "status": "SUCCEEDED",
   "source_type": "SNS_IMPORT",
   "caption_text": "Курага 45 сомони/кг. Доставка по Душанбе.",
@@ -492,6 +498,7 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 - `ACCEPTED`에는 `product`가 필요하다. `image_ids`를 비우면 스캔 사진을 그대로 쓰고, `unit`을 비우면 카테고리 기본 단위를 쓴다.
 - `publish: true`면 상품을 바로 `PUBLISHED`로 만든다. 이때는 모든 상품에 가격이 있어야 한다(`PRODUCT_PRICE_REQUIRED`). `false`면 `DRAFT`로 만든다.
 - `SUCCEEDED`가 아니면 `SCAN_JOB_NOT_REVIEWABLE`, 이미 검수했으면 `SCAN_JOB_ALREADY_REVIEWED`.
+- AI 후보가 0개이고 판매자도 추가하지 않으면 `items: []`로 **상품 없이** 검수를 끝낸다(가게 전경처럼 상품이 없는 SNS 사진). AI 후보가 있으면 빈 `items`는 `SCAN_REVIEW_INCOMPLETE`.
 
 요청
 
@@ -539,6 +546,49 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
   ]
 }
 ```
+
+#### SNS 사진 일괄 등록 (`/import-batches`)
+
+2차 회의 추가 기능 "기존 SNS 이미지 일괄 등록"과 지표 "상점 온보딩 소요시간(이미지 20장 기준 5분 이내)"을 위한 API다. AI 처리·검수는 위 스캔 API를 그대로 쓴다.
+
+1. `POST /seller/stores/{store_id}/import-batches` — **사진을 고르자마자(업로드 전)** 부른다. 응답 201: `ImportBatch`. 이 `created_at`이 온보딩 시작 시각이다(서버 시각).
+2. `POST /images`로 사진을 올린다.
+3. `POST /seller/import-batches/{batch_id}/jobs` — 게시물마다 `SNS_IMPORT` 스캔 작업을 하나씩 만든다. 응답 202: `ImportBatch`.
+
+```json
+{
+  "output_locale": "ko",
+  "items": [
+    { "image_ids": [55], "caption_text": "Курага 45 сомони/кг" },
+    { "image_ids": [56, 57], "caption_text": null }
+  ]
+}
+```
+
+- 게시물 1~20개(근거: 지표 "20장 기준", 무료 AI 키 한도 임시 결정 #7), 게시물마다 사진 1~3장(단건 스캔과 같은 규칙).
+- 같은 사진이 두 게시물에 들어 있으면 400(`items[i].image_ids`). 같은 상품이 두 번 만들어지기 때문이다.
+- 한 묶음은 한 번만 요청할 수 있다(`IMPORT_BATCH_ALREADY_SUBMITTED`).
+- 워커는 **단건 스캔을 일괄 등록 작업보다 먼저** 처리한다. 단건은 판매자가 화면에서 기다리고(지표 "1건 30초"), 일괄 등록은 끝난 것부터 차례로 검수하기 때문이다.
+
+4. `GET /seller/import-batches/{batch_id}` — 진행 상황. 분석 중인 게시물이 있으면 `Retry-After: 2`. 끝난 게시물부터 `/seller/scan-jobs/{job_id}/review`로 검수한다.
+
+응답: `ImportBatch`
+
+```json
+{
+  "id": 3,
+  "store_id": 1,
+  "created_at": "2026-11-10T06:00:00Z",
+  "submitted_at": "2026-11-10T06:01:10Z",
+  "progress": { "posts": 2, "images": 3, "in_progress": 0, "succeeded": 2, "failed": 0, "reviewed": 2 },
+  "completed_at": "2026-11-10T06:03:40Z",
+  "onboarding_seconds": 220,
+  "jobs": [ { "id": 41, "import_batch_id": 3, "status": "SUCCEEDED", "source_type": "SNS_IMPORT", "...": "ScanJob 목록 형식(candidates 제외)" } ]
+}
+```
+
+- `completed_at`: **모든 게시물을 검수한** 시각(마지막 검수 시각). 실패한 게시물이 남아 있으면 다시 시도해서 검수해야 끝난다.
+- `onboarding_seconds` = `created_at` → `completed_at`. 위 숫자는 형식 예시다.
 
 ### 5.6 판매자: 상품
 
@@ -790,11 +840,19 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
   "precision": 0.78,
   "recall": 0.89,
   "median_seconds_to_publish": 26.4,
-  "targets": { "category_accuracy_leaf": 0.8, "seconds_to_publish": 30 }
+  "onboarding": {
+    "started": 6, "submitted": 5, "completed": 4,
+    "median_seconds": 262, "median_prepare_seconds": 71,
+    "recent": [ { "id": 3, "store_id": 1, "images": 20, "posts": 17, "published": 15, "seconds": 262, "prepare_seconds": 71 } ]
+  },
+  "targets": { "category_accuracy_leaf": 0.8, "seconds_to_publish": 30, "onboarding_seconds_for_20_images": 300 }
 }
 ```
 
 위 숫자는 형식 예시이고 실제 측정값이 아니다.
+
+- `median_seconds_to_publish`는 **단건 스캔만** 센다. 일괄 등록 게시물은 앞 게시물 뒤에 줄 서므로 `onboarding`으로 따로 잰다.
+- `onboarding`: 기간은 묶음 시작 시각 기준, 프롬프트 버전 필터는 적용하지 않는다. `started`(시작) / `submitted`(분석 요청) / `completed`(모든 게시물 검수). `median_prepare_seconds` = 시작 → 분석 요청(사진 업로드·캡션 입력). `recent`는 완료된 묶음 최근 20개. 목표가 "20장 기준"이라 묶음별 `images`를 함께 준다(20장으로 환산하지 않는다).
 
 ## 6. 상태 전이
 
@@ -919,3 +977,6 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 | 응답 필드 | – | `scan_jobs`: `available_at`, `candidate_count`, 후보의 `product_id` / 상품 카드: `store.id` | 재시도 대기 안내, 검수 후 상품 링크, 장바구니 상점별 주문에 필요했다 |
 | 쿼리 파라미터 | 표기 없음 | `snake_case`로 통일 | JSON만 자동 변환돼서 필터가 무시되던 문제를 테스트가 찾았다 |
 | 사진 주소 | 모든 응답이 같은 주소, id만 알면 조회 | 공개 API는 서명 없는 주소, 판매자 응답은 서명 주소(`exp`·`sig`). 그 밖은 404 | 검수 전 스캔 사진·초안 사진은 판매자가 아직 공개하지 않은 것이다. 사진 id가 순번이라 숫자만 바꿔도 남의 사진을 볼 수 있었다(임시 결정 #9, 2026-10-12) |
+| 검수 빈 `items` | 1개 이상 필수 | AI 후보가 0개면 빈 `items`로 "상품 없음" 확정 가능 | SNS 게시물에는 상품이 아닌 사진도 섞여 있어, 이것을 끝낼 수 없으면 일괄 등록이 끝나지 않는다(2026-10-12) |
+| 스캔 처리 순서 | `available_at` 순 | 단건 스캔 먼저, 그다음 일괄 등록 작업 | 다른 판매자의 일괄 등록 20건 뒤에 단건 스캔이 줄 서면 "1건 30초" 지표가 깨진다(2026-10-12) |
+| 등록 소요시간 지표 | 모든 스캔 | 단건 스캔만 | 일괄 등록 게시물의 대기 시간이 단건 지표에 섞이지 않게. 일괄 등록은 온보딩 지표로 잰다(2026-10-12) |

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../api.js';
 import { ErrorBox, Field, Loading, useLoad } from '../../components/ui.jsx';
+import { duration } from '../../format.js';
 
 /**
  * 2차 회의 검증 지표. 주간 보고서에 숫자를 그대로 옮겨 쓸 수 있게 목표와 함께 보여준다.
@@ -40,9 +41,39 @@ export default function Metrics() {
             <Metric label="스캔 (성공 / 전체)" value={`${m.scan_jobs.succeeded} / ${m.scan_jobs.total}`} target={`실패 ${m.scan_jobs.failed}`} />
             <Metric label="후보 (수락 / AI 제안)" value={`${m.candidates.accepted} / ${m.candidates.ai_total}`} target={`판매자 추가 ${m.candidates.seller_added}`} />
           </div>
-          <p className="muted small">정밀도 = 수락한 AI 후보 ÷ 결정한 AI 후보, 재현율 = 수락한 AI 후보 ÷ (수락한 AI 후보 + 판매자가 추가한 상품).</p>
+          <p className="muted small">정밀도 = 수락한 AI 후보 ÷ 결정한 AI 후보, 재현율 = 수락한 AI 후보 ÷ (수락한 AI 후보 + 판매자가 추가한 상품).
+            등록 소요시간은 단건 스캔만 셉니다(일괄 등록은 아래 온보딩 지표).</p>
+          <Onboarding o={m.onboarding} target={m.targets.onboarding_seconds_for_20_images} />
         </>
       )}
+    </div>
+  );
+}
+
+/** 상점 온보딩(SNS 일괄 등록): 사진 고르기 시작 → 모든 게시물 검수 완료 */
+function Onboarding({ o, target }) {
+  return (
+    <div className="stack">
+      <h2>상점 온보딩 (SNS 일괄 등록)</h2>
+      <div className="metrics">
+        <Metric label="온보딩 소요시간 (중앙값)" value={duration(o.median_seconds)} target={`목표: 사진 20장 ${duration(target)} 이내`} />
+        <Metric label="준비 시간 (중앙값)" value={duration(o.median_prepare_seconds)} target="사진 고르기 → 분석 요청" />
+        <Metric label="묶음 (완료 / 시작)" value={`${o.completed} / ${o.started}`} target={`분석 요청 ${o.submitted}`} />
+      </div>
+      {o.recent.length > 0 && (
+        <table className="table">
+          <thead><tr><th>묶음</th><th>사진</th><th>게시물</th><th>발행 상품</th><th>소요시간</th></tr></thead>
+          <tbody>
+            {o.recent.map((b) => (
+              <tr key={b.id}>
+                <td>#{b.id}</td><td>{b.images}장</td><td>{b.posts}개</td><td>{b.published}개</td>
+                <td>{duration(b.seconds)}<div className="muted small">준비 {duration(b.prepare_seconds)}</div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="muted small">목표는 사진 20장 기준입니다. 사진 수가 다른 묶음은 20장으로 환산하지 않으니 표에서 사진 수를 함께 보세요. 모든 게시물을 검수한 묶음만 셉니다.</p>
     </div>
   );
 }

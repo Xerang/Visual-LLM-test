@@ -15,6 +15,8 @@ import StoreForm from './pages/seller/StoreForm.jsx';
 import StoreDashboard from './pages/seller/StoreDashboard.jsx';
 import ScanNew from './pages/seller/ScanNew.jsx';
 import ScanJob from './pages/seller/ScanJob.jsx';
+import ImportNew from './pages/seller/ImportNew.jsx';
+import ImportBatch from './pages/seller/ImportBatch.jsx';
 import ProductForm from './pages/seller/ProductForm.jsx';
 import Metrics from './pages/admin/Metrics.jsx';
 import './style.css';
@@ -45,6 +47,8 @@ function App() {
         <Route path="seller/stores/new" element={<RequireLogin><StoreForm /></RequireLogin>} />
         <Route path="seller/stores/:storeId" element={<RequireLogin><StoreDashboard /></RequireLogin>} />
         <Route path="seller/stores/:storeId/scan" element={<RequireLogin><ScanNew /></RequireLogin>} />
+        <Route path="seller/stores/:storeId/import" element={<RequireLogin><ImportNew /></RequireLogin>} />
+        <Route path="seller/import-batches/:batchId" element={<RequireLogin><ImportBatch /></RequireLogin>} />
         <Route path="seller/stores/:storeId/products/new" element={<RequireLogin><ProductForm /></RequireLogin>} />
         <Route path="seller/products/:productId/edit" element={<RequireLogin><ProductForm /></RequireLogin>} />
         <Route path="seller/scan-jobs/:jobId" element={<RequireLogin><ScanJob /></RequireLogin>} />

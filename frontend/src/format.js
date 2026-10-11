@@ -47,6 +47,15 @@ export function dateTime(iso) {
   return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+/** 초 → "4분 12초" */
+export function duration(seconds) {
+  if (seconds === null || seconds === undefined) return '–';
+  const s = Math.round(Number(seconds));
+  const m = Math.floor(s / 60);
+  if (m === 0) return `${s}초`;
+  return s % 60 === 0 ? `${m}분` : `${m}분 ${s % 60}초`;
+}
+
 /** wa.me 링크: + 와 숫자만 남긴다 */
 export function whatsappLink(phone, text) {
   if (!phone) return null;

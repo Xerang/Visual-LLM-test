@@ -21,6 +21,9 @@ public class ScanJobQueue {
 
     /**
      * 실행할 수 있는(QUEUED, available_at 지남) Job 하나를 RUNNING 으로 바꾸고 id를 돌려준다.
+     * 단건 스캔을 일괄 등록 작업보다 먼저 꺼낸다. 단건은 판매자가 화면에서 결과를 기다리고(2차 지표
+     * "상품 1건 등록 30초 이하"), 일괄 등록은 끝난 것부터 차례로 검수하므로 조금 늦어도 흐름이 끊기지 않는다.
+     * 그래서 다른 판매자가 20건을 한꺼번에 올려도 단건 스캔이 그 뒤에 줄 서지 않는다.
      * now() 는 트랜잭션 시작 시각이라, 같은 트랜잭션에서 방금 만든 Job을 못 볼 수 있다.
      * 그래서 실제 현재 시각인 clock_timestamp() 와 비교한다.
      */
@@ -30,7 +33,7 @@ public class ScanJobQueue {
                        attempt_count = attempt_count + 1
                 WHERE id = (SELECT id FROM scan_jobs
                             WHERE status = 'QUEUED' AND available_at <= clock_timestamp()
-                            ORDER BY available_at, id
+                            ORDER BY (import_batch_id IS NOT NULL), available_at, id
                             FOR UPDATE SKIP LOCKED LIMIT 1)
                 RETURNING id
                 """, new MapSqlParameterSource(), Long.class);

@@ -45,11 +45,14 @@ public class ScanJobService {
     public ScanDtos.JobResponse create(Long storeId, Long userId, ScanDtos.CreateRequest request) {
         Store store = storeService.getOwned(storeId, userId);
         imageService.requireOwned(request.imageIds(), store.getOwnerId(), "image_ids");
-        String caption = request.captionText() == null || request.captionText().isBlank()
-                ? null : request.captionText().strip();
-        ScanJob job = jobs.save(new ScanJob(store.getId(), userId, request.sourceType(), caption,
-                locales.resolve(request.outputLocale()), request.imageIds()));
+        ScanJob job = jobs.save(new ScanJob(store.getId(), userId, request.sourceType(),
+                normalizeCaption(request.captionText()), locales.resolve(request.outputLocale()), request.imageIds()));
         return toResponse(job, true);
+    }
+
+    /** 빈 캡션은 null 로 저장한다(AI 프롬프트에 빈 캡션 블록이 들어가지 않게). */
+    static String normalizeCaption(String caption) {
+        return caption == null || caption.isBlank() ? null : caption.strip();
     }
 
     @Transactional(readOnly = true)
@@ -96,7 +99,7 @@ public class ScanJobService {
                             productByCandidate.get(c.getId())))
                     .toList();
         }
-        return new ScanDtos.JobResponse(job.getId(), job.getStoreId(), job.getStatus().name(),
+        return new ScanDtos.JobResponse(job.getId(), job.getStoreId(), job.getImportBatchId(), job.getStatus().name(),
                 job.getSourceType().name(), job.getCaptionText(), job.getOutputLocale(),
                 imageIds.stream().map(images::get).filter(i -> i != null).map(imageService::signedResponse).toList(),
                 job.getAttemptCount(), job.getAvailableAt(), job.getModel(), job.getPromptVersion(),

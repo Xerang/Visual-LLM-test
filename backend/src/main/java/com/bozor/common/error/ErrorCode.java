@@ -21,6 +21,7 @@ public enum ErrorCode {
     SCAN_JOB_NOT_REVIEWABLE(HttpStatus.CONFLICT, "아직 분석이 끝나지 않은 스캔입니다"),
     SCAN_JOB_ALREADY_REVIEWED(HttpStatus.CONFLICT, "이미 검수한 스캔입니다"),
     SCAN_JOB_NOT_RETRYABLE(HttpStatus.CONFLICT, "실패한 스캔만 다시 시도할 수 있습니다"),
+    IMPORT_BATCH_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "이미 분석을 요청한 묶음입니다"),
     ORDER_ITEM_UNAVAILABLE(HttpStatus.CONFLICT, "주문할 수 없는 상품이 있습니다"),
     ORDER_STATUS_INVALID(HttpStatus.CONFLICT, "바꿀 수 없는 주문 상태입니다"),
     IMAGE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "사진이 너무 큽니다"),

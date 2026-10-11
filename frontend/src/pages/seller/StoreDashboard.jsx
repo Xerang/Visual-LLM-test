@@ -45,6 +45,7 @@ export default function StoreDashboard() {
       </div>
       <ErrorBox error={error} />
       <Link className="button primary block" to={`/seller/stores/${storeId}/scan`}>📷 사진으로 상품 등록</Link>
+      <Link className="button block" to={`/seller/stores/${storeId}/import`}>SNS 사진 한꺼번에 등록 (게시물 20개까지)</Link>
 
       <nav className="tabs">
         {Object.entries(TABS).map(([key, label]) => (
@@ -180,7 +181,8 @@ function ScansTab({ storeId }) {
             <Thumb src={j.images[0]?.thumbnail_url} className="thumb-sm" />
             <div className="grow">
               <div className="row"><strong>스캔 #{j.id}</strong><StatusBadge status={j.status} labels={SCAN_STATUS_LABEL} />
-                {j.reviewed_at && <span className="badge ok">검수 완료</span>}</div>
+                {j.reviewed_at && <span className="badge ok">검수 완료</span>}
+                {j.import_batch_id && <span className="badge">일괄 #{j.import_batch_id}</span>}</div>
               <div className="muted small">후보 {j.candidate_count}개 · {dateTime(j.created_at)}</div>
             </div>
           </Link>

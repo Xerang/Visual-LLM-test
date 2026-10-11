@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { CategorySelect, useCategories } from '../../components/seller.jsx';
-import { ErrorBox, Field, Loading, StatusBadge, fieldError } from '../../components/ui.jsx';
+import { ErrorBox, Field, Loading, StatusBadge, fieldError, useLoad } from '../../components/ui.jsx';
 import { PRICE_TYPE_LABEL, SCAN_STATUS_LABEL, UNIT_LABEL, dateTime, money } from '../../format.js';
 
 const POLL_MS = 2000;
@@ -58,6 +58,7 @@ export default function ScanJob() {
 
   return (
     <div className="stack">
+      {job.import_batch_id && <Link className="small" to={`/seller/import-batches/${job.import_batch_id}`}>← SNS 일괄 등록 #{job.import_batch_id}</Link>}
       <div className="row between">
         <h1 style={{ margin: 0 }}>스캔 #{job.id}</h1>
         <StatusBadge status={job.status} labels={SCAN_STATUS_LABEL} />
@@ -83,7 +84,7 @@ export default function ScanJob() {
       {job.image_notes.length > 0 && (
         <div className="alert info"><strong>AI 메모</strong><ul>{job.image_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
       )}
-      {job.status === 'SUCCEEDED' && !job.reviewed_at && <ReviewForm job={job} onDone={setJob} />}
+      {job.status === 'SUCCEEDED' && !job.reviewed_at && <ReviewForm key={job.id} job={job} onDone={setJob} />}
       {job.reviewed_at && <ReviewedSummary job={job} />}
     </div>
   );
@@ -146,7 +147,7 @@ function ReviewForm({ job, onDone }) {
     <form className="stack" onSubmit={submit}>
       <h2>검수</h2>
       <p className="muted small">AI가 만든 초안입니다. 맞는 상품은 고쳐서 수락하고, 아닌 것은 거절하세요.</p>
-      {rows.length === 0 && <p className="muted">AI가 상품을 찾지 못했어요. 아래에서 직접 추가할 수 있어요.</p>}
+      {rows.length === 0 && <p className="muted">AI가 상품을 찾지 못했어요. 아래에서 직접 추가하거나, 상품이 없는 사진(가게 전경 등)이면 “상품 없음으로 확정”을 누르세요.</p>}
       {rows.map((r, i) => (
         <div key={r.key} className={`card stack candidate ${r.decision === 'REJECTED' ? 'rejected' : 'accepted'}`}>
           <div className="row between">
@@ -205,7 +206,7 @@ function ReviewForm({ job, onDone }) {
         <span>바로 판매 시작 (가격이 모두 있어야 해요. 끄면 초안으로 저장)</span>
       </label>
       <ErrorBox error={error} />
-      <button className="primary" disabled={busy || rows.length === 0}>{busy ? '저장 중…' : '검수 확정'}</button>
+      <button className="primary" disabled={busy}>{busy ? '저장 중…' : rows.length === 0 ? '상품 없음으로 확정' : '검수 확정'}</button>
     </form>
   );
 }
@@ -223,7 +224,22 @@ function ReviewedSummary({ job }) {
           </li>
         ))}
       </ul>
-      <Link className="button" to={`/seller/stores/${job.store_id}`}>상점 관리로</Link>
+      {job.import_batch_id ? <NextInBatch job={job} />
+        : <Link className="button" to={`/seller/stores/${job.store_id}`}>상점 관리로</Link>}
+    </div>
+  );
+}
+
+/** 일괄 등록 게시물이면 다음 검수할 게시물로 바로 넘어갈 수 있게 한다(온보딩 시간 단축). */
+function NextInBatch({ job }) {
+  const batch = useLoad(() => api.get(`/seller/import-batches/${job.import_batch_id}`), [job.import_batch_id]);
+  const next = batch.data?.jobs.find((j) => j.id !== job.id && j.status === 'SUCCEEDED' && !j.reviewed_at);
+  return (
+    <div className="stack">
+      {next && <Link className="button primary block" to={`/seller/scan-jobs/${next.id}`}>다음 게시물 검수하기</Link>}
+      <Link className="button block" to={`/seller/import-batches/${job.import_batch_id}`}>
+        {batch.data?.completed_at ? '일괄 등록 결과 보기' : '일괄 등록 진행 보기'}
+      </Link>
     </div>
   );
 }

@@ -28,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 검수 확정(docs/03-api.md 5.5). 한 번의 요청·한 트랜잭션으로 처리한다.
  * - 모든 AI 후보를 ACCEPTED/REJECTED 로 결정하게 강제한다 → 지표 계산에 PENDING 이 남지 않는다.
  * - AI가 놓친 상품(candidate_id=null)은 origin=SELLER 후보로 남긴다 → 재현율 계산에 쓴다.
+ * - AI 후보가 없고 판매자도 추가하지 않으면(items 비어 있음) 상품 없이 검수만 끝낸다.
+ *   SNS 게시물에는 가게 전경처럼 상품이 아닌 사진도 섞여 있어서, 이것을 끝낼 수 있어야 일괄 등록이 끝난다.
  */
 @Service
 public class ScanReviewService {

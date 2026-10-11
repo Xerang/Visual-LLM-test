@@ -1,6 +1,7 @@
 package com.bozor.scan;
 
 import com.bozor.scan.ScanEnums.JobStatus;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,4 +22,7 @@ public interface ScanJobRepository extends JpaRepository<ScanJob, Long> {
             """)
     Page<ScanJob> search(@Param("storeId") Long storeId, @Param("status") JobStatus status,
                          @Param("reviewed") Boolean reviewed, Pageable pageable);
+
+    /** 일괄 등록 묶음의 작업들(게시물 순서 = id 순서) */
+    List<ScanJob> findByImportBatchIdOrderByIdAsc(Long importBatchId);
 }

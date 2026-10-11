@@ -4,6 +4,7 @@
 - DDL(Flyway 마이그레이션, 실제 DB의 기준): [V1__init_schema.sql](../backend/src/main/resources/db/migration/V1__init_schema.sql), 기준 데이터 [V2__reference_data.sql](../backend/src/main/resources/db/migration/V2__reference_data.sql). PostgreSQL 18에서 적용·흐름·제약 조건까지 검증했다.
 - 개발용 목 데이터: [R__dev_mock_data.sql](../backend/src/main/resources/db/dev/R__dev_mock_data.sql) (dev 프로필 전용)
 - 구현 후 바뀐 점(2026-10-11): `orders.stock_deducted` 추가(접수 때 재고 빼기를 고른 주문), 상품 `DRAFT → ARCHIVED` 허용. 스키마를 바꿀 때는 V1을 고치지 말고 새 버전 파일(V3__...)을 추가한다.
+- 2026-10-12: [V3__import_batches.sql](../backend/src/main/resources/db/migration/V3__import_batches.sql) — SNS 사진 일괄 등록 묶음(`import_batches`)과 `scan_jobs.import_batch_id` 추가(결정 18).
 - 현지 조사 근거: [01-tajikistan-research.md](01-tajikistan-research.md)
 - 임시 설정(목 로그인·한국어·템플릿·카테고리)과 실증 전 변경 목록: [00-temporary-decisions.md](00-temporary-decisions.md)
 - 범위: 2차 회의에서 정한 **이번 학기 핵심 기능**. 사진 업로드 → AI 상품 정보 생성 → 판매자 검수 → 발행, 상점·상품 조회·검색, 주문(결제·배송 제외), 인증.
@@ -15,6 +16,8 @@ erDiagram
     users ||--o{ stores : "운영"
     users ||--o{ images : "업로드"
     users ||--o{ scan_jobs : "요청"
+    stores ||--o{ import_batches : "SNS 일괄 등록"
+    import_batches |o--o{ scan_jobs : "게시물마다 1개"
     users ||--o{ orders : "주문"
     markets |o--o{ stores : "입점"
     stores }o--o| images : "로고·배너"
@@ -110,6 +113,14 @@ erDiagram
         timestamptz created_at
         timestamptz finished_at
         timestamptz reviewed_at
+        bigint import_batch_id FK "일괄 등록이면"
+    }
+    import_batches {
+        bigint id PK
+        bigint store_id FK
+        bigint requested_by FK
+        timestamptz created_at "온보딩 시작(업로드 전)"
+        timestamptz submitted_at "AI 분석 요청"
     }
     scan_job_images {
         bigint scan_job_id PK, FK
@@ -182,7 +193,7 @@ erDiagram
     }
 ```
 
-공통 컬럼 `created_at`·`updated_at`은 다이어그램에서 대부분 생략했다. 테이블은 14개다.
+공통 컬럼 `created_at`·`updated_at`은 다이어그램에서 대부분 생략했다. 테이블은 15개다(V3에서 `import_batches` 추가).
 
 ## 핵심 흐름과 테이블
 
@@ -217,6 +228,7 @@ erDiagram
 | 15 | 상태값은 `varchar + CHECK` (PG enum 타입은 쓰지 않음) | JPA `@Enumerated(STRING)`과 그대로 맞는다. 값을 추가할 때도 CHECK만 고치면 된다. |
 | 16 | 상품은 삭제하지 않고 `ARCHIVED`로 보관 | 주문 내역(`order_items`)이 상품을 참조하기 때문이다. 직접 등록한 초안만 삭제할 수 있다. |
 | 17 | 재고는 판매자가 직접 관리, 접수 때만 선택적으로 차감(`orders.stock_deducted`) | 매장·온라인 동시 판매라 자동 차감은 실제와 어긋난다. 접수 때 차감을 고른 주문만 취소 시 재고를 되돌린다. |
+| 18 | SNS 일괄 등록은 `import_batches` 묶음 + 게시물마다 기존 `scan_jobs` 하나 | 2차 추가 기능 "기존 SNS 이미지 일괄 등록"과 지표 "상점 온보딩 소요시간(이미지 20장 기준 5분 이내)". AI 처리·검수·지표 계산은 단건 스캔 구조를 그대로 쓰고, 묶음 시작 시각(사진 고른 직후, 업로드 전)과 분석 요청 시각만 더 기록한다. 시각은 모두 서버 시각. |
 
 ## 검증 지표 쿼리 (2차 회의 지표)
 
@@ -241,12 +253,24 @@ SELECT
 FROM scan_candidates;
 
 -- 상품 1건 등록 소요시간 (목표 30초): 스캔 요청 → 발행, 중앙값
+-- 단건 스캔만 센다. 일괄 등록 게시물은 다른 게시물 뒤에 줄 서므로 아래 온보딩 지표로 따로 잰다(2026-10-12).
 SELECT percentile_cont(0.5) WITHIN GROUP (
          ORDER BY extract(epoch FROM p.published_at - j.created_at)) AS median_seconds_to_publish
 FROM products p
 JOIN scan_candidates c ON c.id = p.source_candidate_id
 JOIN scan_jobs j ON j.id = c.scan_job_id
-WHERE p.published_at IS NOT NULL;
+WHERE p.published_at IS NOT NULL AND j.import_batch_id IS NULL;
+
+-- 상점 온보딩 소요시간 (목표: 이미지 20장 기준 5분 이내): 묶음 시작 → 모든 게시물 검수 완료
+-- 게시물이 하나라도 검수 전(실패 포함)이면 완료로 세지 않는다. 사진 수를 함께 봐야 한다(20장으로 환산하지 않음).
+SELECT ib.id, count(j.id) AS posts,
+       (SELECT count(*) FROM scan_job_images sji JOIN scan_jobs j2 ON j2.id = sji.scan_job_id
+        WHERE j2.import_batch_id = ib.id) AS images,
+       extract(epoch FROM max(j.reviewed_at) - ib.created_at) AS onboarding_seconds
+FROM import_batches ib
+JOIN scan_jobs j ON j.import_batch_id = ib.id
+GROUP BY ib.id
+HAVING count(*) = count(j.reviewed_at);
 ```
 
 ## DB 생성 주의: 키릴 문자 검색
