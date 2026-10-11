@@ -2,11 +2,11 @@ import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { ErrorBox, Field } from '../../components/ui.jsx';
+import { LOCALE_LABEL } from '../../format.js';
 import { resizeForUpload } from '../../imageResize.js';
 
 const MAX_POSTS = 20;           // 서버 ImportDtos.MAX_ITEMS 와 같다(2차 지표 "이미지 20장 기준")
 const MAX_PHOTOS_PER_POST = 3;  // 단건 스캔과 같은 규칙(인스타 캐러셀)
-const LOCALES = { ko: '한국어', ru: '러시아어', tg: '타직어', en: '영어' };
 
 /**
  * SNS 사진 일괄 등록(2차 회의 추가 기능). 저장해 둔 SNS 게시물 사진을 한꺼번에 올리면 게시물마다 AI가 초안을 만든다.
@@ -158,7 +158,7 @@ export default function ImportNew() {
         <div className="card">
           <Field label="AI가 쓸 언어">
             <select value={locale} onChange={(e) => setLocale(e.target.value)}>
-              {Object.entries(LOCALES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {Object.entries(LOCALE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
         </div>

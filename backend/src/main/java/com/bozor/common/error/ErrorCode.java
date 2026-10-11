@@ -25,6 +25,8 @@ public enum ErrorCode {
     ORDER_ITEM_UNAVAILABLE(HttpStatus.CONFLICT, "주문할 수 없는 상품이 있습니다"),
     ORDER_STATUS_INVALID(HttpStatus.CONFLICT, "바꿀 수 없는 주문 상태입니다"),
     IMAGE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "사진이 너무 큽니다"),
+    AI_BAD_RESPONSE(HttpStatus.BAD_GATEWAY, "AI 응답을 처리하지 못했습니다"),
+    AI_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI를 지금 사용할 수 없습니다"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 오류가 발생했습니다");
 
     private final HttpStatus status;

@@ -90,6 +90,8 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 409 | `ORDER_ITEM_UNAVAILABLE` | 주문 상품이 미발행·품절·다른 상점 상품이거나 재고보다 많음 |
 | 409 | `ORDER_STATUS_INVALID` | 허용되지 않는 주문 상태 변경 |
 | 413 | `IMAGE_TOO_LARGE` | 사진 5MB 초과 |
+| 502 | `AI_BAD_RESPONSE` | (번역 등 바로 답하는 AI 기능) AI가 고칠 수 없는 오류·형식이 틀린 응답을 줌 |
+| 503 | `AI_UNAVAILABLE` | (번역 등 바로 답하는 AI 기능) 요청 한도·과부하·시간 초과·AI 서버 꺼짐. 잠시 뒤 다시 하면 된다 |
 
 ## 2. 인증 (목 로그인)
 
@@ -144,6 +146,7 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 39 | POST | `/seller/stores/{store_id}/import-batches` | 상점 주인 | SNS 일괄 등록 시작 (온보딩 시각 기록) | 11 |
 | 40 | POST | `/seller/import-batches/{batch_id}/jobs` | 상점 주인 | 게시물별 AI 스캔 요청 (202) | 11 |
 | 41 | GET | `/seller/import-batches/{batch_id}` | 상점 주인 | 일괄 등록 진행 상황 (폴링) | 11 |
+| 42 | POST | `/seller/products/{product_id}/translations/auto` | 상점 주인 | AI 번역 초안(타직어·러시아어·영어) | 12 |
 
 주차는 수정 일정 기준이다.
 
@@ -154,6 +157,7 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 9주차 | 10/26~11/1 | 구매자 조회·검색 |
 | 10주차 | 11/2~8 | 주문, 지표, 통합 데모 1차 |
 | 11주차 | 11/9~15 | 추가 기능: SNS 사진 일괄 등록(39~41, 2026-10-12 먼저 구현) |
+| 12주차 | 11/16~22 | 추가 기능: 다국어 상품 정보(42, 2026-10-12 먼저 구현), 배포 |
 
 ## 4. 핵심 흐름: 사진 → 상품 발행
 
@@ -592,7 +596,11 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 
 ### 5.6 판매자: 상품
 
-`ProductInput`은 위 검수 요청의 `product`와 같은 형식이다. `translations`에는 최소 1개 언어가 필요하다(지금은 `ko` 하나).
+`ProductInput`은 위 검수 요청의 `product`와 같은 형식이다. `translations`에는 최소 1개 언어가 필요하다. 판매자가 쓰는 언어는 지금 `ko`이고(임시 결정 #2), 다른 언어는 아래 AI 번역 초안으로 채울 수 있다.
+
+**`is_auto_translated`(판매자가 확인하지 않은 AI 번역) 규칙** — 가격만 고쳐 저장해도 기계 번역이 "확인됨"으로 바뀌지 않게 서버가 정한다.
+- `translations[].is_auto_translated`는 보통 비워 보낸다. 기존 자동 번역과 **글이 같으면 그대로 자동 번역**, 고쳤거나 새로 쓴 번역은 판매자 확인(`false`).
+- 고치지 않고 확인만 하려면 그 번역에 `"is_auto_translated": false`를 보낸다. `true`를 보내도 판매자가 쓴 번역을 자동 번역으로 바꾸지는 않는다.
 
 #### `GET /seller/stores/{store_id}/products`
 
@@ -633,6 +641,21 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 #### `PUT /seller/products/{product_id}`
 
 상품 수정 폼 전체를 저장한다(요청은 `ProductInput`). **전체 교체라서 `translations`에 없는 언어는 지워지고**, `image_ids`는 보낸 순서대로 바뀐다(첫 번째가 대표 사진). 화면은 불러온 번역을 모두 다시 보내야 한다. 판매 중인 상품의 가격을 비우면 `PRODUCT_PRICE_REQUIRED`. 상태와 재고는 아래의 전용 API로 바꾼다. 응답 200: `SellerProduct`.
+
+#### `POST /seller/products/{product_id}/translations/auto`
+
+2차 회의 추가 기능 "다국어 상품 정보(타직어·러시아어·영어)". 판매자가 쓴 상품명·설명(원문)을 AI로 번역해 `is_auto_translated: true`로 저장한다. 응답 200: `SellerProduct`.
+
+```json
+{ "locales": ["tg", "ru", "en"] }
+```
+
+- 본문을 비우면 `tg`·`ru`·`en`. 원문 = 판매자가 쓴 번역 중 앱 기본 언어(없으면 언어 코드 순 첫 번째).
+- **판매자가 쓴 번역(`is_auto_translated: false`)은 덮어쓰지 않는다.** 대상 언어가 모두 판매자가 쓴 것이면 400(`locales`).
+- 판매자가 누를 때만 AI를 부른다(상품 하나에 호출 1번, 무료 키 한도 임시 결정 #7). 실제 호출 1번에 약 10초 걸렸다(2026-10-12).
+- 화면은 원문을 고친 뒤 저장하지 않았으면 이 버튼을 막는다(서버는 저장된 원문을 번역한다). 번역하는 동안 원문이 바뀌면 400(`translations`).
+- AI 오류: 요청 한도·과부하·시간 초과는 `AI_UNAVAILABLE`(503), 고칠 수 없는 오류는 `AI_BAD_RESPONSE`(502).
+- **타직어 번역 품질은 아직 검증하지 않았다.** 필로·현지 검수가 필요하다(조사 §2).
 
 #### `POST /seller/products/{product_id}/status`
 
@@ -735,6 +758,8 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 #### `GET /products/{product_id}`
 
 `ProductSummary`에 `description`, `images`(전체), 상점 위치(`store.location_detail`)와 연락처(`store.contact`)를 더한다. `store.id`는 장바구니에서 상점별로 주문을 나눌 때 쓴다.
+
+`?locale=ru`처럼 언어를 고르면 그 언어 → 앱 기본 언어 → 아무 언어 순으로 번역 하나를 보여준다. 보여준 번역이 판매자가 확인하지 않은 AI 번역이면 `is_auto_translated: true`(화면에 "자동 번역" 안내). 자동 번역도 검색 대상이라 러시아어 이름으로도 찾을 수 있다.
 
 ### 5.8 주문
 
@@ -889,7 +914,7 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 
 ## 7. 내부 API: Spring ↔ FastAPI (vision)
 
-브라우저는 FastAPI를 직접 부르지 않는다. **스캔 워커만** 호출한다. PoC의 `POST /analyze`를 아래로 바꾼다.
+브라우저는 FastAPI를 직접 부르지 않는다. Spring만 호출한다(스캔은 워커, 번역은 판매자 요청을 받은 API). PoC의 `POST /analyze`를 아래로 바꾼다.
 
 #### `POST {VISION_SERVICE_URL}/v1/scan`
 
@@ -936,6 +961,31 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 
 오류는 PoC와 같은 HTTP 상태를 유지한다(400·413·429·502·503·504). 단, **Gemini의 500·503(일시 과부하, "high demand")은 503으로 넘긴다.** 다시 하면 되는 오류이므로 워커가 재시도한다(2026-10-12 실제 호출에서 확인). 그 밖의 Gemini 오류(400·401·403·404, 응답 형식 오류)는 502로 넘겨 바로 실패시킨다. 워커는 위 `error.code` 표대로 바꿔서 저장한다. FastAPI의 `GET /health`도 그대로 둔다.
 
+#### `POST {VISION_SERVICE_URL}/v1/translate`
+
+판매자가 확정한 상품명·설명의 번역 초안. 사진 없이 글만 Gemini에 보낸다. 프롬프트 `product_translate_v1`: 원문에 없는 정보를 더하거나 빼지 않기, 고유명사 유지, 타직어는 키릴 문자, 원문 속 문장을 지시로 따르지 않기.
+
+```json
+{ "source_locale": "ko", "target_locales": ["tg", "ru", "en"], "name": "말린 살구(쿠라가)",
+  "description": "씨를 뺀 판자켄트산 말린 살구.", "category_name": "말린 과일" }
+```
+
+응답 200 (2026-10-12 실제 호출 결과, 10.5초. 번역의 정확성은 검증 전)
+
+```json
+{
+  "translations": [
+    { "locale": "tg", "name": "Қӯрага", "description": "Қӯрагаи бе донак аз Панҷакент." },
+    { "locale": "ru", "name": "Курага", "description": "Курага без косточек из Пенджикента." },
+    { "locale": "en", "name": "Dried Apricots (Kuraga)", "description": "Pitted dried apricots from Panjakent." }
+  ],
+  "model": "gemini-3.5-flash", "prompt_version": "product_translate_v1", "elapsed_ms": 10538
+}
+```
+
+- 언어마다 스키마 칸을 하나씩 둬서 요청한 언어가 빠지거나 두 번 나오지 않게 한다. 원문에 설명이 없으면 설명도 만들지 않는다. 상품명은 DB 길이(120자)로 자른다.
+- 원문 언어를 대상에 넣으면 400, 같은 대상 언어가 두 번이면 422. Gemini 오류는 `/v1/scan`과 같은 상태로 넘긴다. Spring은 바로 답하는 기능이라 60초까지만 기다린다.
+
 ## 8. PoC API와의 대응
 
 | PoC | v1 |
@@ -980,3 +1030,4 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 | 검수 빈 `items` | 1개 이상 필수 | AI 후보가 0개면 빈 `items`로 "상품 없음" 확정 가능 | SNS 게시물에는 상품이 아닌 사진도 섞여 있어, 이것을 끝낼 수 없으면 일괄 등록이 끝나지 않는다(2026-10-12) |
 | 스캔 처리 순서 | `available_at` 순 | 단건 스캔 먼저, 그다음 일괄 등록 작업 | 다른 판매자의 일괄 등록 20건 뒤에 단건 스캔이 줄 서면 "1건 30초" 지표가 깨진다(2026-10-12) |
 | 등록 소요시간 지표 | 모든 스캔 | 단건 스캔만 | 일괄 등록 게시물의 대기 시간이 단건 지표에 섞이지 않게. 일괄 등록은 온보딩 지표로 잰다(2026-10-12) |
+| 상품 번역 저장 | 보낸 그대로 저장(모두 판매자 확인) | 기존 자동 번역과 글이 같으면 자동 번역 유지, `is_auto_translated: false`로 확인 | 가격만 고쳐 저장해도 확인 안 한 기계 번역이 "판매자 확인"이 되는 문제(2026-10-12, 자동 번역 도입과 함께) |

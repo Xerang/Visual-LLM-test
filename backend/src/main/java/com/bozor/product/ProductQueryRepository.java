@@ -96,10 +96,11 @@ public class ProductQueryRepository {
                 .addValue("locale", locales.resolve(locale))
                 .addValue("defaultLocale", locales.defaultLocale())
                 .addValue("id", productId);
-        List<Row> rows = jdbc.query(selectSummary() + ", t.description, s.id AS store_id, s.location_detail "
+        List<Row> rows = jdbc.query(selectSummary()
+                        + ", t.description, t.is_auto_translated, s.id AS store_id, s.location_detail "
                         + FROM + translationJoin() + "WHERE p.status = 'PUBLISHED' AND p.id = :id", params,
-                (rs, i) -> new Row(mapSummary(rs, i), rs.getString("description"), rs.getLong("store_id"),
-                        rs.getString("location_detail")));
+                (rs, i) -> new Row(mapSummary(rs, i), rs.getString("description"), rs.getBoolean("is_auto_translated"),
+                        rs.getLong("store_id"), rs.getString("location_detail")));
         return rows.stream().findFirst();
     }
 
@@ -108,7 +109,8 @@ public class ProductQueryRepository {
                 new MapSqlParameterSource("id", productId), Long.class);
     }
 
-    public record Row(ProductSummary summary, String description, Long storeId, String locationDetail) {}
+    public record Row(ProductSummary summary, String description, boolean autoTranslated, Long storeId,
+                      String locationDetail) {}
 
     private static String selectSummary() {
         return """
@@ -124,7 +126,7 @@ public class ProductQueryRepository {
     private static String translationJoin() {
         return """
                 JOIN LATERAL (
-                    SELECT pt.name, pt.locale, pt.description FROM product_translations pt
+                    SELECT pt.name, pt.locale, pt.description, pt.is_auto_translated FROM product_translations pt
                     WHERE pt.product_id = p.id
                     ORDER BY (pt.locale = :locale) DESC, (pt.locale = :defaultLocale) DESC, pt.locale
                     LIMIT 1) t ON true

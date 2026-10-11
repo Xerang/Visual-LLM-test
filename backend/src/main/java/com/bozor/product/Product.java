@@ -107,6 +107,18 @@ public class Product {
         }
     }
 
+    /**
+     * AI 번역 초안을 넣는다(같은 언어의 자동 번역은 바꾼다). 판매자가 쓴 번역은 덮어쓰지 않고 false 를 돌려준다.
+     */
+    public boolean putAutoTranslation(String locale, String name, String description) {
+        for (ProductTranslation t : translations) {
+            if (t.getLocale().equals(locale) && !t.isAutoTranslated()) return false;
+        }
+        translations.removeIf(t -> t.getLocale().equals(locale));
+        translations.add(new ProductTranslation(locale, name, description, true));
+        return true;
+    }
+
     public void changeStatus(ProductStatus next) {
         if (next == ProductStatus.PUBLISHED && publishedAt == null) {
             publishedAt = Instant.now();

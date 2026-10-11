@@ -71,7 +71,8 @@ public class PublicProductController {
         Store store = publicStoreService.requireActive(s.store().slug());
         List<Long> imageIds = query.imageIdsOf(productId);
         Map<Long, Image> images = imageService.findAll(imageIds);
-        return new ProductDetail(s.id(), s.name(), row.description(), s.locale(), s.price(), s.currency(),
+        return new ProductDetail(s.id(), s.name(), row.description(), s.locale(), row.autoTranslated(),
+                s.price(), s.currency(),
                 s.priceType(), s.unit(), s.stockQuantity(),
                 imageIds.stream().map(images::get).filter(i -> i != null).map(ImageService::response).toList(),
                 s.category(),

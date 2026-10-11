@@ -1,6 +1,7 @@
 package com.bozor.product;
 
 import com.bozor.auth.LoginUser;
+import com.bozor.common.i18n.Locales;
 import com.bozor.common.web.PageResponse;
 import com.bozor.product.dto.ProductInput;
 import com.bozor.product.dto.SellerProductResponse;
@@ -8,7 +9,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,9 +33,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/seller")
 public class SellerProductController {
     private final ProductService productService;
+    private final ProductTranslationService translationService;
 
-    public SellerProductController(ProductService productService) {
+    public SellerProductController(ProductService productService, ProductTranslationService translationService) {
         this.productService = productService;
+        this.translationService = translationService;
     }
 
     @GetMapping("/stores/{storeId}/products")
@@ -78,6 +84,18 @@ public class SellerProductController {
     public void delete(@LoginUser Long userId, @PathVariable Long productId) {
         productService.delete(productId, userId);
     }
+
+    /**
+     * AI 번역 초안(2차 추가 기능 "다국어 상품 정보"). locales 를 비우면 타직어·러시아어·영어.
+     * 판매자가 직접 쓴 언어는 덮어쓰지 않는다. AI를 쓸 수 없으면 AI_UNAVAILABLE(503).
+     */
+    @PostMapping("/products/{productId}/translations/auto")
+    public SellerProductResponse autoTranslate(@LoginUser Long userId, @PathVariable Long productId,
+                                               @Valid @RequestBody(required = false) AutoTranslateRequest request) {
+        return translationService.autoTranslate(productId, userId, request == null ? null : request.locales());
+    }
+
+    public record AutoTranslateRequest(@Size(max = 3) List<@NotNull @Pattern(regexp = Locales.PATTERN) String> locales) {}
 
     public record StatusRequest(@NotNull ProductStatus status) {}
 

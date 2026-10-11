@@ -3,9 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api.js';
 import { ImageUploadButton } from '../../components/seller.jsx';
 import { ErrorBox, Field } from '../../components/ui.jsx';
+import { LOCALE_LABEL } from '../../format.js';
 
 const MAX_PHOTOS = 3;
-const LOCALES = { ko: '한국어', ru: '러시아어', tg: '타직어', en: '영어' };
 
 /**
  * ① 촬영한다: 사진 1~3장(인스타 캐러셀이면 여러 장) + SNS 캡션.
@@ -78,7 +78,7 @@ export default function ScanNew() {
         )}
         <Field label="AI가 쓸 언어">
           <select value={locale} onChange={(e) => setLocale(e.target.value)}>
-            {Object.entries(LOCALES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {Object.entries(LOCALE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
       </div>

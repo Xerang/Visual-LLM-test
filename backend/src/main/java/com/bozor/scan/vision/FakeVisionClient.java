@@ -55,6 +55,18 @@ public class FakeVisionClient implements VisionClient {
                 List.of("가짜 AI(app.vision.mode=fake) 응답입니다."));
     }
 
+    /** "[ru] 원래 이름" 처럼 표시만 붙인 가짜 번역. 이름에 "#fail429"가 있으면 요청 한도 초과를 흉내 낸다. */
+    @Override
+    public VisionTranslateResult translate(VisionTranslateRequest request) {
+        if (request.name().contains("#fail429")) {
+            throw new VisionException(VisionException.RATE_LIMITED, true, "가짜 AI: 요청 한도 초과를 흉내 냈습니다.");
+        }
+        return new VisionTranslateResult("fake", "fake_translate_v1", request.targetLocales().stream()
+                .map(loc -> new VisionTranslateResult.Translation(loc, "[" + loc + "] " + request.name(),
+                        request.description() == null ? null : "[" + loc + "] " + request.description()))
+                .toList());
+    }
+
     private static VisionScanRequest.CategoryOption pick(List<VisionScanRequest.CategoryOption> options,
                                                          String code, int fallbackIndex) {
         return options.stream().filter(o -> o.code().equals(code)).findFirst()

@@ -8,4 +8,7 @@ package com.bozor.scan.vision;
 public interface VisionClient {
     /** 실패하면 VisionException(재시도 가능 여부 포함)을 던진다. */
     VisionScanResult scan(VisionScanRequest request);
+
+    /** 상품명·설명 번역 초안(2차 추가 기능 "다국어 상품 정보"). 판매자가 요청할 때만 부른다. */
+    VisionTranslateResult translate(VisionTranslateRequest request);
 }

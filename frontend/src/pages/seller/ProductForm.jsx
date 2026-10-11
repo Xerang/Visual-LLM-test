@@ -4,7 +4,7 @@ import { api } from '../../api.js';
 import { useAuth } from '../../auth.jsx';
 import { CategorySelect, ImageUploadButton, useCategories } from '../../components/seller.jsx';
 import { ErrorBox, Field, Loading, StatusBadge, fieldError } from '../../components/ui.jsx';
-import { PRICE_TYPE_LABEL, UNIT_LABEL } from '../../format.js';
+import { LOCALE_LABEL, PRICE_TYPE_LABEL, UNIT_LABEL } from '../../format.js';
 
 /**
  * 상품 직접 등록(AI 없이)과 수정. 수정은 PUT(전체 교체)이라 폼 전체를 보낸다.
@@ -19,6 +19,7 @@ export default function ProductForm() {
   const [product, setProduct] = useState(null);
   const [form, setForm] = useState({ category_id: null, name: '', description: '', price: '', price_type: 'FIXED', unit: 'PIECE', stock: '' });
   const [images, setImages] = useState([]);   // [{ id, thumbnail_url }]
+  const [others, setOthers] = useState([]);   // 다른 언어 번역: [{ locale, name, description, is_auto_translated, saved, confirm }]
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const locale = me?.locale || 'ko';
@@ -31,6 +32,7 @@ export default function ProductForm() {
       setForm({ category_id: p.category.id, name: t?.name || '', description: t?.description || '',
         price: p.price ?? '', price_type: p.price_type, unit: p.unit, stock: p.stock_quantity ?? '' });
       setImages(p.images);
+      setOthers(othersOf(p, locale));
     }).catch(setError);
   }, [editing, productId, locale]);
 
@@ -40,12 +42,15 @@ export default function ProductForm() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    // 다른 언어 번역은 그대로 두고, 지금 언어의 이름·설명만 바꾼다.
-    const others = (product?.translations || []).filter((t) => t.locale !== locale)
-      .map((t) => ({ locale: t.locale, name: t.name, description: t.description }));
+    // 다른 언어 번역도 함께 보낸다. 자동 번역 표시는 서버가 정한다(고치지 않으면 그대로, 고치면 판매자 확인).
+    // "확인했어요"를 고른 번역만 is_auto_translated=false 로 보낸다.
+    const translations = others.map((o) => ({
+      locale: o.locale, name: o.name.trim(), description: o.description.trim() || null,
+      ...(o.confirm ? { is_auto_translated: false } : {}),
+    }));
     const body = {
       category_id: form.category_id,
-      translations: [{ locale, name: form.name.trim(), description: form.description.trim() || null }, ...others],
+      translations: [{ locale, name: form.name.trim(), description: form.description.trim() || null }, ...translations],
       price: form.price === '' ? null : Number(form.price),
       price_type: form.price_type,
       unit: form.unit,
@@ -115,8 +120,95 @@ export default function ProductForm() {
           </Field>
         </div>
       </div>
+      {editing ? (
+        <OtherLanguages product={product} locale={locale} others={others} setOthers={setOthers}
+                        sourceDirty={product && isSourceDirty(product, locale, form)}
+                        onTranslated={(p) => { setProduct(p); setOthers(othersOf(p, locale)); }} />
+      ) : <p className="muted small">저장한 뒤 수정 화면에서 타직어·러시아어·영어 번역 초안을 만들 수 있어요.</p>}
       <ErrorBox error={error} />
       <button className="primary" disabled={busy}>{editing ? '저장' : '초안으로 등록'}</button>
     </form>
+  );
+}
+
+function othersOf(product, locale) {
+  return product.translations.filter((t) => t.locale !== locale).map((t) => ({
+    locale: t.locale, name: t.name, description: t.description || '', is_auto_translated: t.is_auto_translated,
+    saved: { name: t.name, description: t.description || '' }, confirm: false,
+  }));
+}
+
+/** 저장된 원문과 폼이 다르면 번역 전에 먼저 저장해야 한다(서버는 저장된 원문을 번역한다). */
+function isSourceDirty(product, locale, form) {
+  const t = product.translations.find((x) => x.locale === locale);
+  return !t || t.name !== form.name.trim() || (t.description || '') !== form.description.trim();
+}
+
+/**
+ * 다른 언어(구매자용) 상품명·설명. 2차 추가 기능 "다국어 상품 정보(타직어·러시아어·영어)".
+ * AI 번역은 초안이다. 고치면 판매자 확인으로 바뀌고, 고치지 않고 확인만 할 수도 있다.
+ */
+function OtherLanguages({ product, locale, others, setOthers, sourceDirty, onTranslated }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const update = (loc, changes) => setOthers(others.map((o) => (o.locale === loc ? { ...o, ...changes } : o)));
+  const edited = (o) => o.name.trim() !== o.saved.name.trim() || o.description.trim() !== o.saved.description.trim();
+  // 저장 안 한 변경이 있으면 번역하지 않는다(번역 결과가 화면의 고친 내용을 덮어쓰지 않게)
+  const savedCount = product.translations.filter((t) => t.locale !== locale).length;
+  const unsaved = sourceDirty || others.length !== savedCount || others.some((o) => edited(o) || o.confirm);
+
+  async function translate() {
+    setBusy(true);
+    setError(null);
+    try {
+      onTranslated(await api.post(`/seller/products/${product.id}/translations/auto`));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card stack">
+      <strong>다른 언어 (구매자 화면용)</strong>
+      <p className="muted small">
+        타직어·러시아어·영어 구매자에게 보일 이름이에요. AI 번역은 틀릴 수 있으니 확인해 주세요(특히 타직어는 현지 검수가 필요해요).
+        직접 고친 언어는 AI가 다시 덮어쓰지 않아요.
+      </p>
+      {others.length === 0 && <p className="muted small">아직 다른 언어가 없어요.</p>}
+      {others.map((o) => {
+        const pending = o.is_auto_translated && !edited(o) && !o.confirm;
+        return (
+          <div key={o.locale} className="stack" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <div className="row between">
+              <strong>{LOCALE_LABEL[o.locale]}</strong>
+              {pending ? <span className="badge warn">AI 번역 · 확인 전</span> : <span className="badge ok">판매자 확인</span>}
+            </div>
+            <Field label="상품명">
+              <input value={o.name} onChange={(e) => update(o.locale, { name: e.target.value })} required maxLength={120} />
+            </Field>
+            <Field label="설명">
+              <textarea value={o.description} onChange={(e) => update(o.locale, { description: e.target.value })} maxLength={2000} rows={2} />
+            </Field>
+            <div className="row between">
+              {o.is_auto_translated && !edited(o) ? (
+                <label className="check">
+                  <input type="checkbox" checked={o.confirm} onChange={(e) => update(o.locale, { confirm: e.target.checked })} />
+                  <span>고칠 곳 없이 확인했어요</span>
+                </label>
+              ) : <span />}
+              <button type="button" className="ghost danger" onClick={() => setOthers(others.filter((x) => x.locale !== o.locale))}>이 언어 빼기</button>
+            </div>
+          </div>
+        );
+      })}
+      <ErrorBox error={error} />
+      <button type="button" disabled={busy || unsaved} onClick={translate}>
+        {busy ? 'AI가 번역하는 중… (10초쯤 걸려요)' : 'AI 번역 초안 만들기 (타직어·러시아어·영어)'}
+      </button>
+      {unsaved && <p className="muted small">저장하지 않은 변경이 있어요. 먼저 저장한 뒤 번역할 수 있어요(저장된 글을 번역해요).</p>}
+      <p className="muted small">번역 결과는 아래 "저장"을 눌러야 확인 표시·수정 내용이 반영돼요. 번역 초안 자체는 바로 저장돼요.</p>
+    </div>
   );
 }

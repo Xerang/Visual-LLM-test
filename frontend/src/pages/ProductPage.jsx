@@ -37,6 +37,7 @@ export default function ProductPage() {
       <div>
         <span className="badge">{p.category.name}</span>
         <h1 style={{ marginTop: 6 }}>{p.name}</h1>
+        {p.is_auto_translated && <p className="muted small">자동 번역된 상품 정보예요. 판매자가 아직 확인하지 않았어요.</p>}
         <div style={{ fontSize: '1.15rem' }}><PriceTag price={p.price} unit={p.unit} priceType={p.price_type} currency={p.currency} /></div>
         {p.price_type === 'NEGOTIABLE' && <p className="muted small">기준 가격입니다. 최종 가격은 판매자와 협의합니다.</p>}
         {p.stock_quantity !== null && (

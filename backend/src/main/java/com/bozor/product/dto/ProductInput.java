@@ -29,8 +29,18 @@ public record ProductInput(
         @DecimalMin("0") @Digits(integer = 7, fraction = 3) BigDecimal stockQuantity,
         @Size(max = 10) List<Long> imageIds) {
 
+    /**
+     * is_auto_translated 는 보통 비워 둔다. 서버가 정한다: 자동 번역을 글자 하나 안 바꾸고 다시 보내면 그대로 자동 번역,
+     * 고쳤거나 새로 쓴 번역은 판매자 확인. 고치지 않고 "확인"만 하려면 false 를 보낸다.
+     */
     public record TranslationInput(
             @NotNull @Pattern(regexp = Locales.PATTERN) String locale,
             @NotBlank @Size(max = 120) String name,
-            @Size(max = 2000) String description) {}
+            @Size(max = 2000) String description,
+            Boolean isAutoTranslated) {
+
+        public TranslationInput(String locale, String name, String description) {
+            this(locale, name, description, null);
+        }
+    }
 }

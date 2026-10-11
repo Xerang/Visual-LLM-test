@@ -2,6 +2,7 @@
 // 운영 언어를 tg/ru로 바꿀 때(임시 결정 #2) 이 파일의 라벨부터 번역하면 된다.
 
 export const UNIT_LABEL = { PIECE: '개', KG: 'kg', LITER: 'L', METER: 'm', SET: '세트' };
+export const LOCALE_LABEL = { ko: '한국어', ru: '러시아어', tg: '타직어', en: '영어' };
 export const PRICE_TYPE_LABEL = { FIXED: '정가', NEGOTIABLE: '흥정 가능' };
 export const TEMPLATE_LABEL = { GRID: '진열대형', LIST: '가격표형', SHOWCASE: '공방형' };
 export const TEMPLATE_HELP = {

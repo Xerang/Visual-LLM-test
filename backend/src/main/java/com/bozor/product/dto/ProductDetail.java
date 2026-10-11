@@ -11,6 +11,8 @@ public record ProductDetail(
         String name,
         String description,
         String locale,
+        /** 보여준 상품명·설명이 판매자가 확인하지 않은 AI 번역이면 true(화면에 "자동 번역" 표시). */
+        boolean isAutoTranslated,
         BigDecimal price,
         String currency,
         String priceType,

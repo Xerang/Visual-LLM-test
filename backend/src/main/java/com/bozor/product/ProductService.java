@@ -95,10 +95,21 @@ public class ProductService {
         imageService.requireOwned(imageIds, store.getOwnerId(), field + "image_ids");
         product.apply(category.getId(), in.price(),
                 in.priceType() != null ? in.priceType() : PriceType.FIXED, unit, in.stockQuantity(),
-                in.translations().stream()
-                        .map(t -> new ProductTranslation(t.locale(), t.name().strip(), t.description()))
-                        .toList(),
+                in.translations().stream().map(t -> translationOf(product, t)).toList(),
                 imageIds);
+    }
+
+    /**
+     * 자동 번역 표시를 유지할지 정한다. 가격만 고쳐 저장해도 확인하지 않은 기계 번역이 "판매자 확인"으로 바뀌면 안 된다.
+     * 기존 자동 번역과 글이 같고 판매자가 확인(false)을 보내지 않았을 때만 자동 번역으로 남긴다.
+     */
+    private static ProductTranslation translationOf(Product product, ProductInput.TranslationInput t) {
+        ProductTranslation existing = product.getTranslations().stream()
+                .filter(x -> x.getLocale().equals(t.locale())).findFirst().orElse(null);
+        boolean stillAuto = existing != null && existing.isAutoTranslated()
+                && existing.sameText(t.name(), t.description())
+                && !Boolean.FALSE.equals(t.isAutoTranslated());
+        return new ProductTranslation(t.locale(), t.name().strip(), t.description(), stillAuto);
     }
 
     // ---- 상태·재고 ---------------------------------------------------------

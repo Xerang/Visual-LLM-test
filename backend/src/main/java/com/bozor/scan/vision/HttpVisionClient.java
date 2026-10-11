@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,33 +27,79 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
-/** FastAPI POST /v1/scan 호출. HTTP 상태를 VisionException 코드로 바꾼다(재시도 여부 포함). */
+/** FastAPI POST /v1/scan·/v1/translate 호출. HTTP 상태를 VisionException 코드로 바꾼다(재시도 여부 포함). */
 @Component
 @ConditionalOnProperty(prefix = "app.vision", name = "mode", havingValue = "http", matchIfMissing = true)
 public class HttpVisionClient implements VisionClient {
     private static final Logger LOG = LoggerFactory.getLogger(HttpVisionClient.class);
     private static final MediaType JSON_UTF8 = MediaType.parseMediaType("application/json; charset=UTF-8");
 
+    /** 번역은 판매자가 화면에서 기다리므로 스캔(워커)보다 짧게 기다린다. 글자만 보내서 보통 몇 초면 끝난다. */
+    static final Duration TRANSLATE_READ_TIMEOUT = Duration.ofSeconds(60);
+
     private final RestClient client;
+    private final RestClient translateClient;
     private final ObjectMapper json;
 
     public HttpVisionClient(AppProperties properties, ObjectMapper json) {
+        this.client = restClient(properties.vision().url(), properties.vision().readTimeout());
+        this.translateClient = restClient(properties.vision().url(), TRANSLATE_READ_TIMEOUT);
+        this.json = json;
+    }
+
+    private static RestClient restClient(String baseUrl, Duration readTimeout) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
-        factory.setReadTimeout(properties.vision().readTimeout());
-        this.client = RestClient.builder().baseUrl(properties.vision().url()).requestFactory(factory).build();
-        this.json = json;
+        factory.setReadTimeout(readTimeout);
+        return RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
     @Override
     public VisionScanResult scan(VisionScanRequest request) {
-        String body;
+        return parse(call(() -> client.post().uri("/v1/scan")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(multipart(request))
+                .retrieve()
+                .body(String.class)));
+    }
+
+    @Override
+    public VisionTranslateResult translate(VisionTranslateRequest request) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("source_locale", request.sourceLocale());
+        payload.put("target_locales", request.targetLocales());
+        payload.put("name", request.name());
+        payload.put("description", request.description());
+        payload.put("category_name", request.categoryName());
+        String requestBody;
         try {
-            body = client.post().uri("/v1/scan")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(multipart(request))
-                    .retrieve()
-                    .body(String.class);
+            requestBody = json.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
+        String body = call(() -> translateClient.post().uri("/v1/translate")
+                .contentType(JSON_UTF8)   // 한글·키릴 문자가 깨지지 않게 문자셋을 명시
+                .body(requestBody)
+                .retrieve()
+                .body(String.class));
+        try {
+            JsonNode root = json.readTree(body);
+            List<VisionTranslateResult.Translation> list = new ArrayList<>();
+            for (JsonNode t : root.path("translations")) {
+                list.add(new VisionTranslateResult.Translation(t.path("locale").asText(""), t.path("name").asText(""),
+                        t.path("description").isNull() ? null : t.path("description").asText(null)));
+            }
+            return new VisionTranslateResult(root.path("model").asText("unknown"),
+                    root.path("prompt_version").asText("unknown"), list);
+        } catch (JsonProcessingException e) {
+            throw new VisionException(VisionException.BAD_RESPONSE, false, "AI 응답을 읽지 못했습니다.");
+        }
+    }
+
+    /** 호출 실패를 VisionException 으로 바꾼다(스캔·번역 공통). */
+    private String call(Supplier<String> request) {
+        try {
+            return request.get();
         } catch (RestClientResponseException e) {
             throw fromStatus(e.getStatusCode().value(), detailOf(e));
         } catch (ResourceAccessException e) {
@@ -64,7 +111,6 @@ public class HttpVisionClient implements VisionClient {
             LOG.warn("Vision call failed", e);
             throw new VisionException(VisionException.UNAVAILABLE, true, "AI 서버 호출에 실패했습니다.");
         }
-        return parse(body);
     }
 
     private MultiValueMap<String, Object> multipart(VisionScanRequest request) {
