@@ -8,21 +8,28 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 from PIL import Image
 
+import httpx
+from openai import APIStatusError
+
 from app import main
+
+
+def api_error(status):
+    return APIStatusError("test error", response=httpx.Response(status, request=httpx.Request("POST", "https://api.openai.com/v1/responses")), body=None)
 
 CATEGORIES = [{"code": "food.dried_fruit", "name": "말린 과일"}, {"code": "other", "name": "기타"}]
 
 
-class FakeInteractions:
+class FakeResponses:
     def __init__(self, output):
         self.output = output
         self.request = None
 
-    def create(self, **kwargs):
+    def parse(self, **kwargs):
         self.request = kwargs
         if isinstance(self.output, Exception):
             raise self.output
-        return SimpleNamespace(output_text=self.output)
+        return SimpleNamespace(status="completed", output_parsed=kwargs["text_format"].model_validate_json(self.output))
 
 
 class ScanApiTest(unittest.TestCase):
@@ -35,8 +42,8 @@ class ScanApiTest(unittest.TestCase):
 
     def scan(self, request, fake=None, images=1):
         files = [("images", (f"p{i}.png", self.image, "image/png")) for i in range(images)]
-        env = {"GEMINI_API_KEY": "test-key"}
-        client = SimpleNamespace(interactions=fake or FakeInteractions('{"candidates":[],"image_notes":[]}'))
+        env = {"OPENAI_API_KEY": "test-key"}
+        client = SimpleNamespace(responses=fake or FakeResponses('{"candidates":[],"image_notes":[]}'))
         with patch.dict(os.environ, env), patch.object(main, "get_client", return_value=client):
             return self.client.post("/v1/scan", files=files, data={"request": json.dumps(request)})
 
@@ -44,27 +51,27 @@ class ScanApiTest(unittest.TestCase):
         out = json.dumps({"candidates": [{"name": "말린 살구", "description": "주황색", "category_code": "food.dried_fruit",
                                           "visible_text": [], "review_notes": [], "suggested_price": 45}],
                           "image_notes": []}, ensure_ascii=False)
-        fake = FakeInteractions(out)
+        fake = FakeResponses(out)
         res = self.scan({"output_locale": "ru", "caption_text": "Курага 45", "categories": CATEGORIES}, fake, images=2)
         self.assertEqual(res.status_code, 200)
         body = res.json()
         self.assertEqual(body["candidates"][0]["suggested_price"], 45)
         self.assertEqual(body["prompt_version"], "product_scan_v3")
-        schema = json.dumps(fake.request["response_format"]["schema"])
+        schema = json.dumps(fake.request["text_format"].model_json_schema())
         self.assertIn("food.dried_fruit", schema)
-        self.assertIn("러시아어", fake.request["input"][0]["text"])
-        self.assertEqual([p["type"] for p in fake.request["input"]], ["text", "image", "image"])
+        self.assertIn("러시아어", fake.request["input"][0]["content"][0]["text"])
+        self.assertEqual([p["type"] for p in fake.request["input"][0]["content"]], ["input_text", "input_image", "input_image"])
 
     def test_no_caption_means_no_price_field(self):
-        fake = FakeInteractions('{"candidates":[{"name":"x","description":"y","category_code":"other",'
+        fake = FakeResponses('{"candidates":[{"name":"x","description":"y","category_code":"other",'
                                 '"visible_text":[],"review_notes":[]}],"image_notes":[]}')
         res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, fake)
         self.assertEqual(res.status_code, 200)
         self.assertIsNone(res.json()["candidates"][0]["suggested_price"])
-        self.assertNotIn("suggested_price", json.dumps(fake.request["response_format"]["schema"]))
+        self.assertNotIn("suggested_price", json.dumps(fake.request["text_format"].model_json_schema()))
 
     def test_unknown_category_from_model_is_rejected(self):
-        fake = FakeInteractions('{"candidates":[{"name":"x","description":"y","category_code":"cars",'
+        fake = FakeResponses('{"candidates":[{"name":"x","description":"y","category_code":"cars",'
                                 '"visible_text":[],"review_notes":[]}],"image_notes":[]}')
         self.assertEqual(self.scan({"output_locale": "ko", "categories": CATEGORIES}, fake).status_code, 502)
 
@@ -73,23 +80,20 @@ class ScanApiTest(unittest.TestCase):
         self.assertEqual(self.scan({"output_locale": "ko", "categories": CATEGORIES}, images=4).status_code, 400)
 
     def test_rate_limit_is_passed_through_as_429(self):
-        err = Exception("limit")
-        err.status_code = 429
-        res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
+        err = api_error(429)
+        res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeResponses(err))
         self.assertEqual(res.status_code, 429)
 
-    def test_gemini_overload_is_retryable_503_not_permanent_502(self):
-        # 실제로 받은 응답: 503 "gemini-3.5-flash is currently experiencing high demand"
+    def test_openai_overload_is_retryable_503_not_permanent_502(self):
+        # OpenAI 서버 오류는 Spring 워커가 재시도한다.
         for status in (500, 503):
-            err = Exception("high demand")
-            err.status_code = status
-            res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
-            self.assertEqual(res.status_code, 503, f"Gemini {status}")
+            err = api_error(status)
+            res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeResponses(err))
+            self.assertEqual(res.status_code, 503, f"OpenAI {status}")
 
-    def test_bad_request_from_gemini_stays_permanent_502(self):
-        err = Exception("bad schema")
-        err.status_code = 400
-        res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeInteractions(err))
+    def test_bad_request_from_openai_stays_permanent_502(self):
+        err = api_error(400)
+        res = self.scan({"output_locale": "ko", "categories": CATEGORIES}, FakeResponses(err))
         self.assertEqual(res.status_code, 502)
 
 

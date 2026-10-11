@@ -1,11 +1,11 @@
-"""모델 비교 도구: 같은 정답셋을 여러 Gemini 모델로 돌려 같은 지표로 비교한다.
+"""모델 비교 도구: 같은 정답셋을 여러 OpenAI 모델로 돌려 같은 지표로 비교한다.
 
 근거: 4차 회의 차주 계획 "동일 사진을 대상으로 기존 모델과 다른 AI API 모델의 결과를 비교한다".
 서비스와 같은 함수(app.main.scan_images)를 부르므로 측정값은 실제 /v1/scan 의 성능이다.
 
 사용:
     cd vision
-    .venv/bin/python -m tools.evaluate goldset.json --models gemini-3.5-flash,gemini-3.5-flash-lite
+    .venv/bin/python -m tools.evaluate goldset.json --models gpt-6-astra,gpt-6.1-sol
 
 정답셋(goldset.json) 형식 — 사진 경로는 정답셋 파일 기준 상대 경로:
     {
@@ -26,9 +26,9 @@
     대분류 지표는 코드의 앞부분(food.nuts → food)으로 같은 계산을 한다.
 한계: 상품명·설명의 질, 캡션 가격 추출은 채점하지 않는다(사람이 따로 본다).
 
-무료 한도 보호:
+호출 수·비용 관리:
     - 결과를 <out>/results.jsonl 에 저장하고, 다시 실행하면 이미 성공한 (모델, 사진) 조합은 다시 부르지 않는다.
-    - 429(요청 한도)가 나면 그 자리에서 멈춘다. 다음 날 같은 명령을 다시 실행하면 이어서 한다.
+    - 429(요청 한도)가 나면 그 자리에서 멈춘다. 한도·잔액을 확인한 뒤 같은 명령을 다시 실행하면 이어서 한다.
     - --max-calls 로 이번 실행의 최대 호출 수, --sleep 으로 호출 사이 대기 시간을 정한다.
 """
 
@@ -219,19 +219,19 @@ def report(items, models, out: Path) -> str:
 
 
 def main_cli(argv=None) -> int:
-    p = argparse.ArgumentParser(description="정답셋으로 Gemini 모델을 비교한다.")
+    p = argparse.ArgumentParser(description="정답셋으로 OpenAI 모델을 비교한다.")
     p.add_argument("goldset", type=Path)
-    p.add_argument("--models", default=main.MODEL_NAME, help="쉼표로 구분. 예: gemini-3.5-flash,gemini-3.5-flash-lite")
+    p.add_argument("--models", default=main.MODEL_NAME, help="쉼표로 구분. 예: gpt-6-astra,gpt-6.1-sol")
     p.add_argument("--locale", default="ko", choices=["ko", "ru", "tg", "en"])
     p.add_argument("--categories", help="GET /api/v1/categories 응답을 저장한 파일. 없으면 --categories-url 로 받는다")
     p.add_argument("--categories-url", default="http://localhost:8080/api/v1/categories?locale=ko")
     p.add_argument("--out", type=Path, default=Path("eval-results"))
-    p.add_argument("--max-calls", type=int, default=20, help="이번 실행의 최대 Gemini 호출 수(무료 한도 보호)")
+    p.add_argument("--max-calls", type=int, default=20, help="이번 실행의 최대 OpenAI 호출 수(호출 수·비용 관리)")
     p.add_argument("--sleep", type=float, default=4.0, help="호출 사이 대기 초(분당 요청 한도 보호)")
     args = p.parse_args(argv)
 
     if not main.key_is_configured():
-        print("vision/.env 에 GEMINI_API_KEY 를 넣어야 한다.", file=sys.stderr)
+        print("vision/.env 에 OPENAI_API_KEY 를 넣어야 한다.", file=sys.stderr)
         return 2
     models = [m.strip() for m in args.models.split(",") if m.strip()]
     try:
@@ -247,7 +247,7 @@ def main_cli(argv=None) -> int:
         print(f"정답셋 오류: {exc}", file=sys.stderr)
         return 2
     calls, stopped = evaluate(items, models, categories, args.locale, args.out, args.max_calls, args.sleep)
-    print(f"이번 실행 Gemini 호출 {calls}회")
+    print(f"이번 실행 OpenAI 호출 {calls}회")
     if stopped:
         print(stopped)
     print(report(items, models, args.out))

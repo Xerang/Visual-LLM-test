@@ -13,12 +13,12 @@
 | 4 | **카테고리 트리** | 대분류 9개 / 말단 41개, 이름은 한국어만 | 실제 판매 게시물로 검증한 뒤 조정. 타직어·러시아어 이름 추가 | 새 버전 마이그레이션 파일(`V3__...`)로 추가. `V2__reference_data.sql`은 고치지 않는다 | [ERD](02-erd.md#카테고리-트리-v1-임시) |
 | 5 | **목 데이터** | 가상 사용자 6명, 상점 3곳, 상품 6개(dev 프로필만) | 시연용 실데이터(상점 5곳, 상품 100개 이상, 2차 지표)로 교체 | `backend/src/main/resources/db/dev/R__dev_mock_data.sql` (dev 프로필에서만 적용) | 2차 회의 |
 | 6 | **이미지 저장소** | 로컬 디스크 (`storage_key` = 파일 경로) | S3 등 오브젝트 스토리지 | `ImageStorage` 인터페이스의 새 구현체(지금은 `LocalImageStorage`)와 `ImageService.urlOf`. DB는 그대로 | 2차 아키텍처 |
-| 7 | **AI 모델·한도** | Gemini 무료 키 (일일 요청 한도 있음) | 정답셋 100장 평가와 시연이 가능한 한도 확보(유료 또는 지원) | `GEMINI_MODEL`, API 키 | PoC README의 "20 requests per day" 예시 |
+| 7 | **AI 모델·한도** | OpenAI API · gpt-6-astra (사용량 과금) | 정답셋 100장 평가와 시연이 가능한 한도 확보(유료 또는 지원) | `OPENAI_MODEL`, API 키 | OpenAI Platform의 사용 한도·결제 설정 |
 | 8 | **토큰** | JWT 7일, 리프레시 토큰 없음 | 짧은 액세스 토큰 + 리프레시 토큰(필요하면 `refresh_tokens` 테이블) | 토큰 발급 서비스, 보안 설정 | [API §2](03-api.md#2-인증-목-로그인) |
 | 9 | **사진 접근** | 공개 사진(판매 중 상품, 공개 상점 로고·배너)만 서명 없이 조회. 나머지는 주인 응답에 담긴 서명 주소(1~2시간)로만 조회(2026-10-12). 서명 키는 JWT 키를 함께 씀 | S3로 바꿀 때(#6) S3 서명 URL로 교체, 서명 키를 JWT 키와 분리 | `ImageUrlSigner`, `ImageService.serve`·`isPublic`, 저장소 구현체 | [API §5.3](03-api.md#53-사진) |
 | 10 | **화면 문구** | 한국어를 화면 코드에 직접 씀. 상태·단위 라벨만 `format.js`에 모음 | 운영 언어로 번역(i18n 라이브러리 도입 검토) | `frontend/src/format.js`, `frontend/src/pages/**` | 임시 결정 #2 |
 | 11 | **검수 기본값** | AI 후보를 모두 "수락" 상태로 보여줌(빠른 등록 우선) | 실증에서 판매자가 확인 없이 넘기는지 관찰. 그렇다면 기본값을 "미결정"으로 바꿔 직접 고르게 함(정밀도 지표가 부풀려지지 않게) | `frontend/src/pages/seller/ScanJob.jsx`의 `newRow` | 2차 지표(등록 30초) |
-| 12 | **가짜 AI 모드** | `VISION_MODE=fake`면 Gemini 없이 고정 후보를 줌. 캡션에 `#fail429`·`#fail`을 넣으면 실패를, `#empty`를 넣으면 "상품 못 찾음"을 흉내 냄 | 실증·시연에서는 반드시 `http`(기본값) | `app.vision.mode` | 무료 키 일일 한도 |
+| 12 | **가짜 AI 모드** | `VISION_MODE=fake`면 OpenAI 없이 고정 후보를 줌. 캡션에 `#fail429`·`#fail`을 넣으면 실패를, `#empty`를 넣으면 "상품 못 찾음"을 흉내 냄 | 실증·시연에서는 반드시 `http`(기본값) | `app.vision.mode` | API 호출 비용·사용 한도 |
 
 ## 실증 전 체크리스트
 

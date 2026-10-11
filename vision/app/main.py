@@ -1,4 +1,4 @@
-"""BOZOR AI 서버: 상품 사진(1~3장) + SNS 캡션 → Gemini → 판매자가 검수할 상품 후보 JSON.
+"""BOZOR AI 서버: 상품 사진(1~3장) + SNS 캡션 → OpenAI → 판매자가 검수할 상품 후보 JSON.
 판매자가 확정한 상품명·설명의 다른 언어 번역 초안(/v1/translate)도 만든다.
 
 Spring만 호출한다(브라우저는 직접 부르지 않는다). docs/03-api.md 7장.
@@ -22,7 +22,7 @@ from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from google import genai
+from openai import OpenAI, APITimeoutError, APIConnectionError, APIStatusError
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field, ValidationError, create_model, field_validator
 
@@ -33,8 +33,8 @@ app = FastAPI(title="BOZOR Vision", version="1.0.0")
 MAX_BYTES = 5 * 1024 * 1024
 MAX_IMAGES = 3
 Image.MAX_IMAGE_PIXELS = 25_000_000
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
-GEMINI_TIMEOUT_MS = int(os.getenv("GEMINI_TIMEOUT_MS", "240000"))
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-6-astra")
+OPENAI_TIMEOUT_MS = int(os.getenv("OPENAI_TIMEOUT_MS", "240000"))
 PROMPT_VERSION = "product_scan_v3"
 TRANSLATE_PROMPT_VERSION = "product_translate_v1"
 MAX_NAME_LENGTH = 120   # products 의 상품명 칸 길이(DB와 같음)
@@ -43,7 +43,7 @@ CATEGORY_CODE = re.compile(r"^[a-z_]+(\.[a-z_]+)?$")
 
 
 def key_is_configured() -> bool:
-    key = os.getenv("GEMINI_API_KEY", "").strip()
+    key = os.getenv("OPENAI_API_KEY", "").strip()
     return bool(key and key != "replace_with_your_key")
 
 
@@ -117,7 +117,7 @@ class TranslateResponse(BaseModel):
 
 
 def model_schema(codes: list[str], with_price: bool) -> type[BaseModel]:
-    """Gemini 구조화 출력 스키마. category_code 를 요청받은 코드로만 제한한다(enum)."""
+    """OpenAI 구조화 출력 스키마. category_code 를 요청받은 코드로만 제한한다(enum)."""
     fields = {
         "name": (str, Field(description="사진으로 확인되는 상품명 후보")),
         "description": (str, Field(description="사진에서 확인되는 특징을 한 문장으로")),
@@ -215,68 +215,69 @@ def normalized_image(data: bytes) -> bytes:
         raise HTTPException(status_code=400, detail="이미지 파일을 읽을 수 없습니다.") from exc
 
 
-# ---- Gemini ---------------------------------------------------------------
+# ---- OpenAI ---------------------------------------------------------------
 
 @lru_cache(maxsize=1)
-def get_client() -> genai.Client:
-    return genai.Client(
-        api_key=os.environ["GEMINI_API_KEY"],
-        http_options={"timeout": GEMINI_TIMEOUT_MS, "retry_options": {"attempts": 1}},
+def get_client() -> OpenAI:
+    return OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"].strip(),
+        timeout=OPENAI_TIMEOUT_MS / 1000,
+        max_retries=0,  # Spring 워커만 재시도를 담당한다.
     )
 
 
-def call_gemini(prompt: str, images: list[bytes], schema: type[BaseModel], model: str = MODEL_NAME) -> BaseModel:
-    """재시도는 하지 않는다. 429·504 같은 일시 오류는 Spring 워커가 간격을 두고 다시 시도한다.
-    model 은 모델 비교 도구(tools/evaluate.py)가 바꿔 부를 때만 넘긴다."""
-    content = [{"type": "text", "text": prompt}] + [
-        {"type": "image", "data": base64.b64encode(img).decode("ascii"), "mime_type": "image/jpeg"}
+def call_openai(prompt: str, images: list[bytes], schema: type[BaseModel], model: str = MODEL_NAME) -> BaseModel:
+    """Responses API의 구조화 출력으로 기존 상품·번역 응답 계약을 유지한다."""
+    content = [{"type": "input_text", "text": prompt}] + [
+        {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(img).decode("ascii"),
+         "detail": "high"}
         for img in images
     ]
     try:
-        interaction = get_client().interactions.create(
+        response = get_client().responses.parse(
             model=model,
-            input=content,
-            response_format={"type": "text", "mime_type": "application/json", "schema": schema.model_json_schema()},
+            input=[{"role": "user", "content": content}],
+            text_format=schema,
+            store=False,
         )
-    except Exception as exc:
-        # google-genai 2.x Interactions는 google.genai.errors.APIError 와 다른 예외 클래스를 쓴다.
-        status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    except APITimeoutError as exc:
+        logger.warning("OpenAI request timed out: model=%s", model)
+        raise HTTPException(status_code=504, detail="OpenAI 응답 대기 시간이 초과되었습니다.") from exc
+    except APIConnectionError as exc:
+        logger.warning("OpenAI connection failed: model=%s", model)
+        raise HTTPException(status_code=503, detail="OpenAI 서버에 연결하지 못했습니다. 잠시 후 다시 시도합니다.") from exc
+    except APIStatusError as exc:
+        status = exc.status_code
+        logger.warning("OpenAI request failed: status=%s model=%s", status, model)
         if status == 429:
-            logger.warning("Gemini request limit reached: model=%s", model)
-            raise HTTPException(status_code=429, detail="Gemini 요청 한도(429)에 도달했습니다.") from exc
-        if isinstance(exc, TimeoutError) or "Timeout" in type(exc).__name__:
-            logger.exception("Gemini request timed out")
-            raise HTTPException(status_code=504, detail="Gemini 응답 대기 시간이 초과되었습니다.") from exc
-        if status in (500, 503):
-            # 과부하·일시 장애("high demand")는 잠시 뒤 다시 하면 된다. 503으로 넘겨 Spring 워커가 재시도하게 한다.
-            logger.warning("Gemini temporarily unavailable (status=%s): model=%s", status, model)
-            raise HTTPException(status_code=503, detail="Gemini 서버가 일시적으로 바쁩니다. 잠시 후 다시 시도합니다.") from exc
-        if status is None:
-            logger.exception("Gemini request failed")
-            raise HTTPException(status_code=502, detail="Gemini 요청 처리에 실패했습니다.") from exc
-        logger.exception("Gemini API rejected the request (status=%s)", status)
+            raise HTTPException(status_code=429, detail="OpenAI 요청 한도(429)에 도달했습니다. 사용 한도와 결제 잔액을 확인해 주세요.") from exc
+        if status in (408, 504):
+            raise HTTPException(status_code=504, detail="OpenAI 응답 대기 시간이 초과되었습니다.") from exc
+        if status >= 500:
+            raise HTTPException(status_code=503, detail="OpenAI 서버가 일시적으로 바쁩니다. 잠시 후 다시 시도합니다.") from exc
         messages = {
-            400: "Gemini 오류 400: 요청 형식이나 JSON 스키마를 확인해 주세요.",
-            401: "Gemini 오류 401: API 키를 확인해 주세요.",
-            403: "Gemini 오류 403: API 키의 모델 접근 권한을 확인해 주세요.",
-            404: f"Gemini 오류 404: {model} 모델을 이 API 키에서 쓸 수 있는지 확인해 주세요.",
+            400: "OpenAI 오류 400: 요청 형식이나 JSON 스키마를 확인해 주세요.",
+            401: "OpenAI 오류 401: API 키를 확인해 주세요.",
+            403: "OpenAI 오류 403: API 키의 모델 접근 권한을 확인해 주세요.",
+            404: f"OpenAI 오류 404: {model} 모델을 이 API 키에서 쓸 수 있는지 확인해 주세요.",
         }
-        raise HTTPException(status_code=502, detail=messages.get(status, f"Gemini 오류 {status}")) from exc
-
-    try:
-        output_text = interaction.get("output_text") if isinstance(interaction, dict) else interaction.output_text
-        return schema.model_validate_json(output_text or "")
+        raise HTTPException(status_code=502, detail=messages.get(status, f"OpenAI 오류 {status}")) from exc
     except ValidationError as exc:
-        logger.warning("Gemini returned an invalid product schema: %s", exc)
-        raise HTTPException(status_code=502, detail="Gemini 응답을 정해진 JSON 형식으로 해석하지 못했습니다.") from exc
+        logger.warning("OpenAI returned an invalid schema: model=%s", model)
+        raise HTTPException(status_code=502, detail="OpenAI 응답을 정해진 JSON 형식으로 해석하지 못했습니다.") from exc
+
+    if response.status != "completed" or response.output_parsed is None:
+        # 거절·출력 중단을 상품 없음으로 처리하지 않는다.
+        raise HTTPException(status_code=502, detail="OpenAI가 완전한 분석 결과를 반환하지 못했습니다. 입력을 확인해 주세요.")
+    return response.output_parsed
 
 
 def scan_images(req: ScanRequest, normalized: list[bytes], model: str = MODEL_NAME) -> tuple[list[Candidate], list[str]]:
-    """정규화된 사진으로 Gemini를 불러 후보를 만든다. /v1/scan 과 모델 비교 도구가 함께 쓴다.
+    """정규화된 사진으로 OpenAI를 불러 후보를 만든다. /v1/scan 과 모델 비교 도구가 함께 쓴다.
     같은 함수를 써야 비교 도구의 측정값이 실제 서비스 성능을 그대로 말해 준다."""
     has_caption = bool(req.caption_text and req.caption_text.strip())
     schema = model_schema([c.code for c in req.categories], with_price=has_caption)
-    scanned = call_gemini(build_prompt(req), normalized, schema, model)
+    scanned = call_openai(build_prompt(req), normalized, schema, model)
     candidates = []
     for c in scanned.candidates[:req.max_candidates]:
         if not c.name.strip():
@@ -293,7 +294,7 @@ def scan_images(req: ScanRequest, normalized: list[bytes], model: str = MODEL_NA
 
 @app.get("/health")
 def health() -> dict[str, str | bool]:
-    return {"status": "ok", "provider": "gemini", "model": MODEL_NAME,
+    return {"status": "ok", "provider": "openai", "model": MODEL_NAME,
             "prompt_version": PROMPT_VERSION, "key_configured": key_is_configured()}
 
 
@@ -316,13 +317,13 @@ def scan(images: list[UploadFile] = File(...), request: str = Form(...)) -> Scan
             raise HTTPException(status_code=413, detail="사진은 5MB 이하여야 합니다.")
         normalized.append(normalized_image(data))   # 브라우저·Spring이 보낸 MIME 대신 실제 내용을 확인
     if not key_is_configured():
-        raise HTTPException(status_code=503, detail="FastAPI의 GEMINI_API_KEY를 설정해 주세요.")
+        raise HTTPException(status_code=503, detail="FastAPI의 OPENAI_API_KEY를 설정해 주세요.")
 
-    logger.info("Gemini scan started: model=%s images=%d caption=%s", MODEL_NAME, len(normalized),
+    logger.info("OpenAI scan started: model=%s images=%d caption=%s", MODEL_NAME, len(normalized),
                 bool(req.caption_text and req.caption_text.strip()))
     candidates, image_notes = scan_images(req, normalized)
     elapsed = round((time.monotonic() - started) * 1000)
-    logger.info("Gemini scan completed: elapsed_ms=%d candidates=%d", elapsed, len(candidates))
+    logger.info("OpenAI scan completed: elapsed_ms=%d candidates=%d", elapsed, len(candidates))
     return ScanResponse(candidates=candidates, image_notes=image_notes, model=MODEL_NAME,
                         prompt_version=PROMPT_VERSION, elapsed_ms=elapsed)
 
@@ -334,20 +335,20 @@ def translate(req: TranslateRequest) -> TranslateResponse:
     if req.source_locale in req.target_locales:
         raise HTTPException(status_code=400, detail="원문 언어를 번역 대상에 넣을 수 없습니다.")
     if not key_is_configured():
-        raise HTTPException(status_code=503, detail="FastAPI의 GEMINI_API_KEY를 설정해 주세요.")
+        raise HTTPException(status_code=503, detail="FastAPI의 OPENAI_API_KEY를 설정해 주세요.")
     with_description = bool(req.description and req.description.strip())
-    result = call_gemini(build_translate_prompt(req), [],
+    result = call_openai(build_translate_prompt(req), [],
                          translate_schema(req.target_locales, with_description))
     translations = []
     for loc in req.target_locales:
         item = getattr(result, loc)
         name = item.name.strip()[:MAX_NAME_LENGTH]
         if not name:
-            raise HTTPException(status_code=502, detail="Gemini가 빈 상품명을 돌려주었습니다.")
+            raise HTTPException(status_code=502, detail="OpenAI가 빈 상품명을 돌려주었습니다.")
         description = getattr(item, "description", None)
         translations.append(Translation(locale=loc, name=name,
                                         description=description.strip() if description else None))
     elapsed = round((time.monotonic() - started) * 1000)
-    logger.info("Gemini translate completed: elapsed_ms=%d targets=%s", elapsed, req.target_locales)
+    logger.info("OpenAI translate completed: elapsed_ms=%d targets=%s", elapsed, req.target_locales)
     return TranslateResponse(translations=translations, model=MODEL_NAME,
                              prompt_version=TRANSLATE_PROMPT_VERSION, elapsed_ms=elapsed)

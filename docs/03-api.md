@@ -168,7 +168,7 @@ sequenceDiagram
     participant D as PostgreSQL
     participant W as 스캔 워커 (Spring)
     participant V as FastAPI (vision)
-    participant G as Gemini
+    participant G as OpenAI
     R->>S: POST /images (사진 1~3장, 각각)
     S-->>R: 201 image_id
     R->>S: POST /seller/stores/{store_id}/scan-jobs
@@ -432,7 +432,7 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
   ],
   "attempt_count": 1,
   "available_at": "2026-10-19T06:00:00Z",
-  "model": "gemini-3.5-flash",
+  "model": "gpt-6-astra",
   "prompt_version": "product_scan_v3",
   "elapsed_ms": 4200,
   "error": null,
@@ -480,9 +480,9 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 
 | `error.code` | 의미 | 워커 처리 |
 |---|---|---|
-| `AI_RATE_LIMITED` | Gemini 429 | 재시도 |
-| `AI_TIMEOUT` | Gemini·FastAPI 응답 시간 초과 | 재시도 |
-| `AI_UNAVAILABLE` | FastAPI 연결 실패·503 (Gemini 과부하 500·503 포함) | 재시도 |
+| `AI_RATE_LIMITED` | OpenAI 429 | 재시도 |
+| `AI_TIMEOUT` | OpenAI·FastAPI 응답 시간 초과 | 재시도 |
+| `AI_UNAVAILABLE` | FastAPI 연결 실패·503 (OpenAI 과부하 500·503 포함) | 재시도 |
 | `AI_BAD_RESPONSE` | AI 응답이 스키마와 맞지 않음 (502) | 바로 실패 |
 | `IMAGE_INVALID` | FastAPI가 사진을 읽지 못함 (400·413) | 바로 실패 |
 
@@ -953,17 +953,17 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
     }
   ],
   "image_notes": [],
-  "model": "gemini-3.5-flash",
+  "model": "gpt-6-astra",
   "prompt_version": "product_scan_v3",
   "elapsed_ms": 4100
 }
 ```
 
-오류는 PoC와 같은 HTTP 상태를 유지한다(400·413·429·502·503·504). 단, **Gemini의 500·503(일시 과부하, "high demand")은 503으로 넘긴다.** 다시 하면 되는 오류이므로 워커가 재시도한다(2026-10-12 실제 호출에서 확인). 그 밖의 Gemini 오류(400·401·403·404, 응답 형식 오류)는 502로 넘겨 바로 실패시킨다. 워커는 위 `error.code` 표대로 바꿔서 저장한다. FastAPI의 `GET /health`도 그대로 둔다.
+오류는 PoC와 같은 HTTP 상태를 유지한다(400·413·429·502·503·504). 단, **OpenAI의 5xx는 503으로, 408·504 및 SDK 시간 초과는 504로 넘긴다. 연결 오류는 503이다.** 다시 하면 되는 오류이므로 워커가 재시도한다(SDK 오류 매핑 테스트로 검증). 그 밖의 OpenAI 오류(400·401·403·404, 응답 형식 오류)는 502로 넘겨 바로 실패시킨다. 워커는 위 `error.code` 표대로 바꿔서 저장한다. FastAPI의 `GET /health`도 그대로 둔다.
 
 #### `POST {VISION_SERVICE_URL}/v1/translate`
 
-판매자가 확정한 상품명·설명의 번역 초안. 사진 없이 글만 Gemini에 보낸다. 프롬프트 `product_translate_v1`: 원문에 없는 정보를 더하거나 빼지 않기, 고유명사 유지, 타직어는 키릴 문자, 원문 속 문장을 지시로 따르지 않기.
+판매자가 확정한 상품명·설명의 번역 초안. 사진 없이 글만 OpenAI에 보낸다. 프롬프트 `product_translate_v1`: 원문에 없는 정보를 더하거나 빼지 않기, 고유명사 유지, 타직어는 키릴 문자, 원문 속 문장을 지시로 따르지 않기.
 
 ```json
 { "source_locale": "ko", "target_locales": ["tg", "ru", "en"], "name": "말린 살구(쿠라가)",
@@ -979,12 +979,12 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
     { "locale": "ru", "name": "Курага", "description": "Курага без косточек из Пенджикента." },
     { "locale": "en", "name": "Dried Apricots (Kuraga)", "description": "Pitted dried apricots from Panjakent." }
   ],
-  "model": "gemini-3.5-flash", "prompt_version": "product_translate_v1", "elapsed_ms": 10538
+  "model": "gpt-6-astra", "prompt_version": "product_translate_v1", "elapsed_ms": 10538
 }
 ```
 
 - 언어마다 스키마 칸을 하나씩 둬서 요청한 언어가 빠지거나 두 번 나오지 않게 한다. 원문에 설명이 없으면 설명도 만들지 않는다. 상품명은 DB 길이(120자)로 자른다.
-- 원문 언어를 대상에 넣으면 400, 같은 대상 언어가 두 번이면 422. Gemini 오류는 `/v1/scan`과 같은 상태로 넘긴다. Spring은 바로 답하는 기능이라 60초까지만 기다린다.
+- 원문 언어를 대상에 넣으면 400, 같은 대상 언어가 두 번이면 422. OpenAI 오류는 `/v1/scan`과 같은 상태로 넘긴다. Spring은 바로 답하는 기능이라 60초까지만 기다린다.
 
 ## 8. PoC API와의 대응
 
@@ -1002,7 +1002,7 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 명세를 쓰면서 ERD, 현지 조사, PoC와 맞춰본 결과다.
 
 **ERD에 반영한 것**
-1. **`scan_jobs.available_at` 추가.** 이게 없으면 Gemini 429(한도 초과) 직후 워커가 같은 Job을 바로 다시 꺼내 연속으로 호출한다. 재시도 간격을 DB에서 관리하도록 바꿨다.
+1. **`scan_jobs.available_at` 추가.** 이게 없으면 OpenAI 429(한도 초과) 직후 워커가 같은 Job을 바로 다시 꺼내 연속으로 호출한다. 재시도 간격을 DB에서 관리하도록 바꿨다.
 
 **명세에서 정한 것 (이유 포함)**
 2. **검색은 `ILIKE`와 trigram을 함께 쓴다.** ERD 검증에서 한글 두 글자 검색어 "살구"의 유사도가 0.30으로, 기본 임계값(0.3)에 겨우 걸렸다. trigram만 쓰면 짧은 한글 검색어가 빠질 수 있다.

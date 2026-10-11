@@ -5,7 +5,7 @@
 | 폴더 | 내용 | 주소 |
 |---|---|---|
 | `backend/` | Spring Boot 3.5 · Java 17 · PostgreSQL · Flyway. API 전체와 AI 스캔 워커 | `http://localhost:8080` (API 문서: `/swagger-ui.html`) |
-| `vision/` | FastAPI · Gemini. 사진 1~3장 + 캡션 → 상품 후보 JSON | `http://localhost:8000` |
+| `vision/` | FastAPI · OpenAI. 사진 1~3장 + 캡션 → 상품 후보 JSON | `http://localhost:8000` |
 | `frontend/` | React 19 · Vite. 구매자·판매자·관리자 화면 | `http://localhost:5173` |
 | `docs/` | [현지 조사](docs/01-tajikistan-research.md) · [ERD](docs/02-erd.md) · [API 명세](docs/03-api.md) · [임시 결정](docs/00-temporary-decisions.md) · [후보고](docs/04-refactor-report.md) | |
 | `legacy/poc/` | 이전 PoC 코드(참고용, 빌드하지 않음) | |
@@ -15,14 +15,14 @@ React ──/api──▶ Spring Boot ──▶ PostgreSQL
                     │  ▲
          스캔 워커 ──┘  └── 사진 파일(로컬 디스크 → 나중에 S3)
                     │
-                    └──▶ FastAPI ──▶ Gemini
+                    └──▶ FastAPI ──▶ OpenAI
 ```
 
 ## 준비물
 
 - Java 17 이상, Maven(또는 IntelliJ 내장 Maven), Node.js 20 이상, Python 3.10 이상
 - PostgreSQL 16 이상
-- (실제 AI를 쓸 때만) Gemini API 키 — 없으면 **가짜 AI 모드**로 전체 흐름을 돌려볼 수 있다
+- (실제 AI를 쓸 때만) OpenAI API 키 — 없으면 **가짜 AI 모드**로 전체 흐름을 돌려볼 수 있다
 
 ## 1. DB 만들기
 
@@ -45,7 +45,7 @@ cd backend
 $env:DB_URL = 'jdbc:postgresql://localhost:5432/bozor'
 $env:DB_USER = 'postgres'
 $env:DB_PASSWORD = '비밀번호'
-$env:VISION_MODE = 'fake'        # Gemini 없이 개발할 때. 실제 AI를 쓰려면 이 줄을 빼고 AI 서버를 띄운다
+$env:VISION_MODE = 'fake'        # OpenAI 없이 개발할 때. 실제 AI를 쓰려면 이 줄을 빼고 AI 서버를 띄운다
 mvn spring-boot:run              # mvn 이 없다고 나오면 Maven 설치 폴더의 bin\mvn.cmd 전체 경로로 실행
 ```
 
@@ -62,7 +62,7 @@ DB_URL=jdbc:postgresql://localhost:5432/bozor DB_USER=postgres VISION_MODE=fake 
 cd vision
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env      # 메모장으로 열어 GEMINI_API_KEY= 뒤에 키를 넣는다
+Copy-Item .env.example .env      # 메모장으로 열어 OPENAI_API_KEY= 뒤에 키를 넣는다
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
 ```
 
@@ -71,14 +71,14 @@ Copy-Item .env.example .env      # 메모장으로 열어 GEMINI_API_KEY= 뒤에
 cd vision
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-cp .env.example .env             # GEMINI_API_KEY= 뒤에 키를 넣는다
+cp .env.example .env             # OPENAI_API_KEY= 뒤에 키를 넣는다
 .venv/bin/python -m uvicorn app.main:app --port 8000
 ```
 
-- 키는 [Google AI Studio](https://aistudio.google.com/app/apikey)에서 만든다. `vision/.env`는 `.gitignore`에 들어 있어 저장소에 올라가지 않는다. **키를 코드·채팅·문서에 붙이지 말 것.**
+- 키는 [OpenAI Platform](https://platform.openai.com/api-keys)에서 만든다. `vision/.env`는 `.gitignore`에 들어 있어 저장소에 올라가지 않는다. **키를 코드·채팅·문서에 붙이지 말 것.**
 - 확인: `http://localhost:8000/health`에서 `"key_configured": true`면 키가 읽힌 것이다(키 값 자체는 보여주지 않는다).
 - `.env`를 고쳤으면 **AI 서버를 껐다가 다시 켠다.** 키는 시작할 때 한 번만 읽는다.
-- **무료 키는 하루 요청 수에 한도가 있다.** 화면 개발이나 연습은 가짜 AI 모드로 하고, 실제 키는 측정할 때만 쓴다. 한도를 넘으면 앱이 30초·60초 뒤에 다시 시도하고, 그래도 안 되면 "분석 실패 → 다시 시도"로 안내한다.
+- **OpenAI API는 사용량에 따라 과금된다.** 화면 개발이나 연습은 가짜 AI 모드로 하고, 실제 키는 측정할 때만 쓴다. 한도를 넘으면 앱이 30초·60초 뒤에 다시 시도하고, 그래도 안 되면 "분석 실패 → 다시 시도"로 안내한다.
 
 **프런트엔드**
 
@@ -104,13 +104,13 @@ npm run dev
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/bozor`, `postgres`, (없음) | DB 접속 |
-| `VISION_MODE` | `http` | `http` = FastAPI 호출, `fake` = Gemini 없이 고정 후보 |
+| `VISION_MODE` | `http` | `http` = FastAPI 호출, `fake` = OpenAI 없이 고정 후보 |
 | `VISION_SERVICE_URL` | `http://localhost:8000` | AI 서버 주소 |
 | `STORAGE_DIR` | `./data/images` | 사진 저장 폴더 |
 | `SERVER_ADDRESS`, `SERVER_PORT` | `127.0.0.1`, `8080` | 다른 기기(휴대폰 등)에서 접속하게 하려면 `SERVER_ADDRESS=0.0.0.0` |
 | `JWT_SECRET` | dev 프로필에만 개발용 값 | 32바이트 이상. dev 외 프로필에서는 꼭 설정 |
 | `AUTH_MODE` | dev 프로필에서 `mock` | 목 로그인 켜기/끄기 |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | (`vision/.env`) | AI 서버용 |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | (`vision/.env`) | AI 서버용 |
 
 운영 언어(지금 한국어), 목 로그인 같은 **임시 설정은 실증 전에 바꾼다** → [임시 결정 목록](docs/00-temporary-decisions.md).
 
@@ -118,7 +118,7 @@ npm run dev
 
 ```bash
 cd backend && mvn test                                   # 36개. TEST_DB_URL 로 테스트 DB 지정 가능(기본 bozor_test)
-cd vision && .venv/bin/python -m unittest discover -s tests   # 5개. Gemini 호출은 가짜로 대체
+cd vision && .venv/bin/python -m unittest discover -s tests   # OpenAI 호출은 가짜로 대체
 cd frontend && npm run build                             # 빌드 확인
 ```
 
@@ -126,16 +126,16 @@ cd frontend && npm run build                             # 빌드 확인
 
 ## 5. 모델 비교 (정답셋 평가)
 
-같은 사진 세트로 Gemini 모델들을 같은 지표로 비교한다. 서비스와 **같은 함수**를 부르므로 측정값은 실제 `/v1/scan` 성능이다.
+같은 사진 세트로 OpenAI 모델들을 같은 지표로 비교한다. 서비스와 **같은 함수**를 부르므로 측정값은 실제 `/v1/scan` 성능이다.
 
 ```bash
 cd vision
-.venv/bin/python -m tools.evaluate 정답셋/gold.json --models gemini-3.5-flash,gemini-3.5-flash-lite --max-calls 20
+.venv/bin/python -m tools.evaluate 정답셋/gold.json --models gpt-6-astra,gpt-6.1-sol --max-calls 20
 ```
 
 - 정답셋 형식(사진마다 정답 소분류 코드 목록)과 채점 규칙은 `vision/tools/evaluate.py` 맨 위 설명을 본다.
 - 카테고리 목록은 켜져 있는 백엔드(`/api/v1/categories`)에서 받는다. 백엔드 없이 하려면 그 응답을 파일로 저장해 `--categories`로 넘긴다.
-- **무료 한도 보호**: 성공한 결과는 `eval-results/results.jsonl`에 저장돼 다시 부르지 않는다. 429가 나면 바로 멈추고, 다음 날 같은 명령으로 이어서 한다.
+- **호출 수·비용 관리**: 성공한 결과는 `eval-results/results.jsonl`에 저장돼 다시 부르지 않는다. 429가 나면 바로 멈추고, 한도·잔액을 확인한 뒤 같은 명령으로 이어서 한다.
 - 결과 표는 `eval-results/summary.md`. 상품명·설명의 질과 캡션 가격은 채점하지 않으니 사람이 따로 본다.
 
 ## 6. 자주 막히는 곳
@@ -145,8 +145,8 @@ cd vision
 | 백엔드 시작 시 `DB LC_CTYPE(C)가 키릴 문자를 지원하지 않습니다` | DB 로케일 문제. 1번 명령(`TEMPLATE template0 ENCODING 'UTF8'`)으로 DB를 다시 만든다 |
 | 백엔드 시작 시 `JWT_SECRET ... 32바이트 이상` | dev 프로필이 아니다. 프로필을 지정하지 않거나 `JWT_SECRET`을 32자 이상으로 설정한다 |
 | 백엔드 시작 시 `Schema-validation` 오류 | 엔티티와 테이블이 다르다. 이미 적용된 마이그레이션 파일을 고쳤다면 되돌리고 새 버전 파일로 추가한다 |
-| 스캔이 계속 "대기 중"에 "AI 요청 한도" 메시지 | 무료 키 한도 초과(429). 다음 날 다시 하거나 가짜 AI 모드로 개발한다 |
-| 스캔이 "Gemini 서버가 일시적으로 바쁩니다"로 재시도 | Gemini 과부하(503). 30초·60초 뒤 자동으로 다시 시도한다. 계속되면 시간을 두고 다시 한다 |
+| 스캔이 계속 "대기 중"에 "AI 요청 한도" 메시지 | 요청 한도 또는 API 잔액 부족(429). Platform에서 한도·결제를 확인하거나 가짜 AI 모드로 개발한다 |
+| 스캔이 "OpenAI 서버가 일시적으로 바쁩니다"로 재시도 | OpenAI 과부하(503). 30초·60초 뒤 자동으로 다시 시도한다. 계속되면 시간을 두고 다시 한다 |
 | 스캔이 "AI 서버에 연결하지 못했습니다"로 재시도 | AI 서버(8000)가 꺼져 있다. 띄우거나 `VISION_MODE=fake`로 실행한다 |
 | 로그인 화면에 "목 로그인이 꺼져 있습니다" | 백엔드가 dev 프로필이 아니다 |
 
@@ -198,3 +198,13 @@ Windows PowerShell은 `$env:SERVER_ADDRESS="0.0.0.0"`처럼 변수를 먼저 정
 - **주의(임시 결정 #1·#5)**: 프로필을 정하지 않으면 dev(목 로그인 + 목 데이터)로 뜬다. 누구나 비밀번호 없이 관리자로 들어올 수 있으므로, 실제 로그인을 만들기 전까지는 **공개 인터넷에 상시로 열지 않는다**(시연할 때만, 주소를 아는 사람에게만). dev 프로필의 기본 `JWT_SECRET`은 저장소에 공개된 값이므로 배포할 때는 꼭 직접 정한다.
 - 사진은 `STORAGE_DIR`에 쌓인다(임시 결정 #6). 서버를 옮길 때 DB와 함께 백업한다.
 - 어디에 배포할지(AWS·학교 서버 등)와 비용은 팀 결정이 필요하다 → [개발 기록 5번](docs/05-dev-log.md).
+
+## OpenAI 전환 (`feat/v1.1-openai`)
+
+- 기준 브랜치: `feature/v1.1`. 사진 인식과 번역 모두 OpenAI Responses API의 구조화 출력을 사용한다.
+- 기본 모델은 인식 품질을 우선한 `gpt-6-astra`. `OPENAI_MODEL`로 변경할 수 있다. 실제 상품 사진 정답셋으로 정확도·속도·비용을 비교한 뒤 운영 모델을 정한다.
+- 사진은 고해상도(`detail=high`)로 전달한다. API 응답 저장은 `store=False`로 요청한다.
+- 기존 `/v1/scan`, `/v1/translate` 요청·응답 형식은 유지한다. 영상 업로드·분석은 지원하지 않는다.
+- 기존 `.env`의 Gemini 설정은 더 이상 사용하지 않는다. `.env.example`을 참고해 `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`를 설정하고 서버를 다시 시작한다.
+- `/health`의 `key_configured`는 키가 입력됐다는 뜻이며, 키 유효성이나 모델 사용 권한을 검증하지 않는다.
+- 공식 문서: [모델](https://developers.openai.com/api/docs/models), [이미지 입력](https://developers.openai.com/api/docs/guides/images-vision), [구조화 출력](https://developers.openai.com/api/docs/guides/structured-outputs).
