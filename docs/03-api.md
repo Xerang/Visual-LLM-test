@@ -109,7 +109,7 @@ Spring Boot의 `ProblemDetail`(RFC 9457) 형식에 `code`와 `errors`를 더한�
 | 5 | GET | `/categories` | 없음 | 카테고리 트리 | 7 |
 | 6 | GET | `/markets` | 없음 | 시장 목록 | 7 |
 | 7 | POST | `/images` | 로그인 | 사진 업로드 | 7 |
-| 8 | GET | `/images/{image_id}/file` | 없음 | 사진 파일 (`?size=thumb`) | 7 |
+| 8 | GET | `/images/{image_id}/file` | 없음(공개 사진) 또는 서명 | 사진 파일 (`?size=thumb`) | 7 |
 | 9 | GET | `/seller/stores` | 로그인 | 내 상점 목록 | 7 |
 | 10 | POST | `/seller/stores` | 로그인 | 상점 만들기 | 7 |
 | 11 | GET | `/seller/stores/{store_id}` | 상점 주인 | 내 상점 상세 | 7 |
@@ -287,8 +287,8 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 ```json
 {
   "id": 55,
-  "url": "/api/v1/images/55/file",
-  "thumbnail_url": "/api/v1/images/55/file?size=thumb",
+  "url": "/api/v1/images/55/file?exp=1792400400&sig=Xk3…",
+  "thumbnail_url": "/api/v1/images/55/file?size=thumb&exp=1792400400&sig=Xk3…",
   "width": 2048,
   "height": 1536,
   "duplicate": false
@@ -297,7 +297,17 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
 
 #### `GET /images/{image_id}/file`
 
-`?size=thumb`이면 썸네일. 응답은 이미지 바이트, `Cache-Control: public, max-age=86400`. 지금은 id만 알면 누구나 볼 수 있다(임시 결정 #9). 스토리지를 S3로 바꾸면 `url`이 S3 주소로 바뀌므로, **프런트는 경로를 직접 조립하지 말고 항상 응답의 `url`을 쓴다.**
+`?size=thumb`이면 썸네일. 응답은 이미지 바이트. 아래 둘 중 하나일 때만 내주고, 그 밖에는 **404**(사진이 있는지도 알리지 않음)(임시 결정 #9).
+
+| 경우 | 주소 | 캐시 |
+|---|---|---|
+| **공개 사진**: 판매 중(`PUBLISHED`) 상품이 공개(`ACTIVE`) 상점에 있거나, 공개 상점의 로고·배너 | 서명 없는 주소 (구매자용 응답: 상품·상점 공개 API) | `max-age=86400, public` |
+| **서명 주소**: 주인에게 준 응답(업로드 결과, 판매자 상품·스캔 작업·상점 응답)에 들어 있는 `exp`·`sig` | `?exp=<만료 시각(초)>&sig=<서명>` | `max-age=3600, private` |
+
+- 서명은 HMAC-SHA256(`"image:{id}:{exp}"`). 만료 시각을 1시간 단위로 맞춰서, 2초 폴링 중에도 주소가 바뀌지 않아 브라우저 캐시가 유지된다. 서명 주소는 발급 후 1~2시간 유효하다.
+- `<img>` 태그는 로그인 토큰을 보낼 수 없어서 토큰 대신 서명을 쓴다. S3로 바꿔도 같은 "서명 URL" 방식이라 화면은 그대로다.
+- 판매자 화면에서는 숨긴 상품·비공개 상점의 사진도 서명 주소로 계속 보인다. 상품을 숨기면 서명 없는 주소는 바로 404가 되지만, 이미 받아 간 브라우저·중간 캐시에는 최대 하루 남을 수 있다.
+- **프런트는 경로를 직접 조립하지 말고 항상 응답의 `url`을 쓴다.** 서명 없는 주소로 바꿔 쓰면 비공개 사진은 보이지 않는다.
 
 ### 5.4 판매자: 상점
 
@@ -408,7 +418,7 @@ dev 프로필에서만 존재한다(그 밖에서는 404). 로그인 화면의 "
   "caption_text": "Курага 45 сомони/кг. Доставка по Душанбе.",
   "output_locale": "ko",
   "images": [
-    { "id": 55, "url": "/api/v1/images/55/file", "thumbnail_url": "/api/v1/images/55/file?size=thumb", "width": 2048, "height": 1536 }
+    { "id": 55, "url": "/api/v1/images/55/file?exp=1792400400&sig=Xk3…", "thumbnail_url": "/api/v1/images/55/file?size=thumb&exp=1792400400&sig=Xk3…", "width": 2048, "height": 1536 }
   ],
   "attempt_count": 1,
   "available_at": "2026-10-19T06:00:00Z",
@@ -561,7 +571,7 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
     { "locale": "ko", "name": "말린 살구(쿠라가)", "description": "씨를 뺀 판자켄트산 말린 살구.", "is_auto_translated": false }
   ],
   "images": [
-    { "id": 55, "url": "/api/v1/images/55/file", "thumbnail_url": "/api/v1/images/55/file?size=thumb", "width": 2048, "height": 1536 }
+    { "id": 55, "url": "/api/v1/images/55/file?exp=1792400400&sig=Xk3…", "thumbnail_url": "/api/v1/images/55/file?size=thumb&exp=1792400400&sig=Xk3…", "width": 2048, "height": 1536 }
   ],
   "source": { "scan_job_id": 31, "candidate_id": 101 },
   "published_at": "2026-10-19T06:00:25Z",
@@ -896,7 +906,7 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 
 **임시 결정 목록에 추가한 것**
 - #8: 리프레시 토큰 없이 7일짜리 토큰 (목 로그인 단계)
-- #9: 사진 파일은 id만 알면 조회 가능
+- #9: 사진 파일은 id만 알면 조회 가능 → 2026-10-12 공개 사진·서명 주소로 제한(§5.3)
 
 ## 10. 구현하면서 바뀐 점
 
@@ -908,3 +918,4 @@ AI를 거치지 않는 직접 등록이다(`source: null`). 요청은 `ProductIn
 | 상품 상태 | `DRAFT` → `PUBLISHED`, 삭제 | `DRAFT` → `ARCHIVED`도 허용, AI 초안은 삭제 불가 | 지우면 지표용 "후보 → 상품" 연결이 끊긴다 |
 | 응답 필드 | – | `scan_jobs`: `available_at`, `candidate_count`, 후보의 `product_id` / 상품 카드: `store.id` | 재시도 대기 안내, 검수 후 상품 링크, 장바구니 상점별 주문에 필요했다 |
 | 쿼리 파라미터 | 표기 없음 | `snake_case`로 통일 | JSON만 자동 변환돼서 필터가 무시되던 문제를 테스트가 찾았다 |
+| 사진 주소 | 모든 응답이 같은 주소, id만 알면 조회 | 공개 API는 서명 없는 주소, 판매자 응답은 서명 주소(`exp`·`sig`). 그 밖은 404 | 검수 전 스캔 사진·초안 사진은 판매자가 아직 공개하지 않은 것이다. 사진 id가 순번이라 숫자만 바꿔도 남의 사진을 볼 수 있었다(임시 결정 #9, 2026-10-12) |

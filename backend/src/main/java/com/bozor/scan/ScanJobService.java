@@ -98,7 +98,7 @@ public class ScanJobService {
         }
         return new ScanDtos.JobResponse(job.getId(), job.getStoreId(), job.getStatus().name(),
                 job.getSourceType().name(), job.getCaptionText(), job.getOutputLocale(),
-                imageIds.stream().map(images::get).filter(i -> i != null).map(ImageService::response).toList(),
+                imageIds.stream().map(images::get).filter(i -> i != null).map(imageService::signedResponse).toList(),
                 job.getAttemptCount(), job.getAvailableAt(), job.getModel(), job.getPromptVersion(),
                 job.getElapsedMs(),
                 job.getErrorCode() == null ? null : new ScanDtos.ErrorInfo(job.getErrorCode(), job.getErrorMessage()),

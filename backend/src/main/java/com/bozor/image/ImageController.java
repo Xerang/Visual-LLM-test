@@ -28,19 +28,28 @@ public class ImageController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ImageResponse> upload(@LoginUser Long userId, @RequestPart("file") MultipartFile file) {
         ImageService.Upload upload = imageService.upload(userId, file);
-        ImageResponse base = ImageService.response(upload.image());
+        ImageResponse base = imageService.signedResponse(upload.image());   // 아직 어디에도 공개되지 않은 사진
         ImageResponse body = new ImageResponse(base.id(), base.url(), base.thumbnailUrl(),
                 base.width(), base.height(), upload.duplicate());
         return ResponseEntity.status(upload.duplicate() ? HttpStatus.OK : HttpStatus.CREATED).body(body);
     }
 
-    /** 지금은 id만 알면 누구나 볼 수 있다(임시 결정 #9). */
+    /**
+     * 공개 사진이거나 서명 주소가 맞을 때만 내준다(임시 결정 #9). 그 밖은 404.
+     * 공개 사진은 하루, 서명 사진은 본인 브라우저에만 1시간 보관하게 한다.
+     */
     @GetMapping("/{imageId}/file")
-    public ResponseEntity<byte[]> file(@PathVariable Long imageId, @RequestParam(required = false) String size) {
-        ImageService.StoredFile file = imageService.file(imageId, "thumb".equals(size));
+    public ResponseEntity<byte[]> file(@PathVariable Long imageId,
+                                       @RequestParam(required = false) String size,
+                                       @RequestParam(required = false) Long exp,
+                                       @RequestParam(required = false) String sig) {
+        ImageService.ServedFile served = imageService.serve(imageId, "thumb".equals(size), exp, sig);
+        CacheControl cache = served.publicImage()
+                ? CacheControl.maxAge(Duration.ofDays(1)).cachePublic()
+                : CacheControl.maxAge(Duration.ofHours(1)).cachePrivate();
         return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType(file.mimeType()))
-                .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePublic())
-                .body(file.bytes());
+                .contentType(MediaType.parseMediaType(served.file().mimeType()))
+                .cacheControl(cache)
+                .body(served.file().bytes());
     }
 }

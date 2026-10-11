@@ -183,7 +183,7 @@ public class ProductService {
                                 t.getDescription(), t.isAutoTranslated()))
                         .toList(),
                 p.getImages().stream().map(ref -> images.get(ref.getImageId()))
-                        .filter(i -> i != null).map(ImageService::response).toList(),
+                        .filter(i -> i != null).map(imageService::signedResponse).toList(),
                 source, p.getPublishedAt(), p.getCreatedAt(), p.getUpdatedAt());
     }
 

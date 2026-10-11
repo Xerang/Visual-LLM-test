@@ -132,7 +132,8 @@ public class StoreService {
         return new ApiException(ErrorCode.STORE_SLUG_TAKEN, "이미 사용 중인 상점 주소입니다. 다른 주소를 입력해 주세요.");
     }
 
-    private static com.bozor.image.ImageResponse imageOrNull(Image image) {
-        return image == null ? null : ImageService.response(image);
+    /** 판매자 화면이므로 비공개(DRAFT·HIDDEN) 상점의 로고·배너도 보이도록 서명 주소를 쓴다. */
+    private com.bozor.image.ImageResponse imageOrNull(Image image) {
+        return image == null ? null : imageService.signedResponse(image);
     }
 }
