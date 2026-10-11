@@ -26,7 +26,8 @@ v1(PR #1) 이후의 작업을 **근거와 함께** 기록한다. 새 작업은 �
 
 ### 1. CI (2026-10-12)
 - 무엇: `.github/workflows/ci.yml`. PR과 main 푸시마다 backend `mvn test`(PostgreSQL 16 서비스), vision `unittest`, frontend `npm ci && npm run build`.
-- 검증: PR #2에서 GitHub Actions로 실행된다.
+- 정정(같은 날): 처음 올린 버전은 **실행되지 않았다.** 프로젝트가 저장소 최상위가 아니라 `bozor-photo-scan-gemini-updated/` 폴더 안에 있었는데, GitHub는 최상위의 `.github/workflows`만 읽기 때문이다(PR 템플릿·README 표시도 같은 이유로 안 됐다). 프로젝트 전체를 `git mv`로 저장소 최상위로 옮겨 고쳤다(경로 외 변경 없음, 이동 후 백엔드 44·AI 서버 16 테스트와 프런트 빌드 통과).
+- 검증: 최상위 이동 후 PR #2에서 GitHub Actions 실행 결과로 확인한다.
 
 ### 2. 모델 비교 도구 (2026-10-12)
 - 무엇: `vision/tools/evaluate.py`. 정답셋(사진별 정답 소분류 코드)으로 모델별 정밀도·재현율·완전 일치(소분류·대분류)와 응답 시간 중앙값을 계산한다.
